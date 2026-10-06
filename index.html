@@ -1,0 +1,1401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RHS pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#E8EDF1; --sheet:#F8FAFB; --ink:#172231; --muted:#536273; --line:#C8D2DB; --soft:#DDE5EB;
+  --rail:#2E4A6E; --rail-ink:#FFFFFF; --go:#1C7466; --wait:#9A6510; --stop:#AE3535;
+  --go-bg:#D9EEE8; --wait-bg:#F5E8CF; --stop-bg:#F4DCDC;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#16202A; --sheet:#1E2935; --ink:#E2E8EE; --muted:#93A2B1; --line:#334252; --soft:#273443;
+    --rail:#8EB2D8; --rail-ink:#0F1E2D; --go:#5BC2AE; --wait:#E4AC52; --stop:#E87878;
+    --go-bg:#1C3935; --wait-bg:#3A2F1F; --stop-bg:#3D2427;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#16202A; --sheet:#1E2935; --ink:#E2E8EE; --muted:#93A2B1; --line:#334252; --soft:#273443;
+  --rail:#8EB2D8; --rail-ink:#0F1E2D; --go:#5BC2AE; --wait:#E4AC52; --stop:#E87878;
+  --go-bg:#1C3935; --wait-bg:#3A2F1F; --stop-bg:#3D2427;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size:15px; line-height:1.45; font-variant-numeric:tabular-nums;
+}
+button,input,select,textarea{font:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--rail); outline-offset:2px}
+h1,h2,h3{margin:0; font-stretch:112%; letter-spacing:-0.01em}
+h1{font-size:21px; font-weight:780}
+h2{font-size:17px; font-weight:720}
+h3{font-size:15px; font-weight:700}
+p{margin:0}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- header ---------- */
+.top{
+  position:sticky; top:0; z-index:5; background:var(--paper);
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding:14px clamp(16px,3vw,32px); border-bottom:1px solid var(--line);
+}
+.brand{display:flex; align-items:baseline; gap:12px; margin-right:auto; min-width:0}
+.sync{font-size:13px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.sync.ok{color:var(--go)} .sync.bad{color:var(--stop)} .sync.busy{color:var(--wait)}
+.tabs{display:flex; gap:2px; background:var(--soft); padding:3px; border-radius:8px}
+.tabs button{
+  border:0; background:transparent; padding:6px 12px; border-radius:6px; cursor:pointer;
+  color:var(--muted); font-weight:600;
+}
+.tabs button[aria-selected="true"]{background:var(--sheet); color:var(--ink); box-shadow:0 1px 0 var(--line)}
+.btn{
+  border:1px solid var(--line); background:var(--sheet); padding:8px 14px; border-radius:6px;
+  cursor:pointer; font-weight:600; white-space:nowrap;
+}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--rail); color:var(--rail-ink); border-color:var(--rail)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.small{padding:4px 10px; font-size:13px}
+.btn.danger{color:var(--stop)}
+.btn:disabled{opacity:.5; cursor:not-allowed}
+
+@media (max-width:640px){
+  .top{position:static; gap:10px; padding:12px 16px}
+  .brand{flex-direction:column; gap:0; width:100%}
+  .brand h1{white-space:nowrap}
+  .tabs{width:100%} .tabs button{flex:1; padding:8px 4px}
+  #toast{bottom:84px}
+  #addBtn{position:fixed; right:16px; bottom:16px; z-index:10; padding:12px 18px; box-shadow:0 4px 14px rgba(15,25,38,.28)}
+}
+main{padding:20px clamp(16px,3vw,32px) 64px; max-width:1240px; margin:0 auto}
+section[hidden]{display:none}
+.panel{background:var(--sheet); border:1px solid var(--line); border-radius:8px; padding:18px}
+.panel > h2{margin-bottom:12px}
+.stack{display:grid; gap:20px}
+
+/* ---------- today ---------- */
+.today-grid{display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:20px; align-items:start}
+@media (max-width:860px){ .today-grid{grid-template-columns:1fr} }
+
+.order{list-style:none; margin:0; padding:0; display:grid; gap:18px; counter-reset:phase}
+.order > li{display:grid; grid-template-columns:30px 1fr; gap:12px; counter-increment:phase}
+.order > li::before{
+  content:counter(phase); width:26px; height:26px; border-radius:50%;
+  display:grid; place-items:center; font-weight:750; font-size:13px;
+  background:var(--soft); color:var(--muted);
+}
+.order > li.has::before{background:var(--rail); color:var(--rail-ink)}
+.phase-head{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:6px}
+.tasks{list-style:none; margin:0; padding:0; display:grid; gap:6px}
+.task{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:9px 12px; border-radius:6px; background:var(--paper);
+}
+.task .what{min-width:0}
+.task .what strong{font-weight:680}
+.task .how{font-size:13px; color:var(--muted)}
+.task.block{background:var(--stop-bg)}
+.task.warn{background:var(--wait-bg)}
+.task.money{background:var(--go-bg)}
+.empty-phase{font-size:13px; color:var(--muted); padding:2px 0}
+
+.ledger{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 18px; margin-bottom:16px}
+.ledger .lab{font-size:13px; color:var(--muted)}
+.ledger .val{font-size:26px; font-weight:760; font-stretch:118%; line-height:1.15}
+.ledger .sub{font-size:12px; color:var(--muted)}
+.gates{display:grid; gap:8px; border-top:1px solid var(--line); padding-top:14px}
+.gate{display:grid; grid-template-columns:auto 1fr; gap:10px; align-items:start}
+.lamp{width:12px; height:12px; border-radius:50%; margin-top:4px; background:var(--muted)}
+.lamp.go{background:var(--go)} .lamp.stop{background:var(--stop)} .lamp.wait{background:var(--wait)}
+.gate .t{font-weight:650}
+.gate .d{font-size:13px; color:var(--muted)}
+
+/* ---------- the rail ---------- */
+.rail-wrap{overflow-x:auto; padding-bottom:4px}
+.rail{display:grid; grid-template-columns:repeat(5,minmax(150px,1fr)); min-width:760px; position:relative}
+.rail::before{
+  content:""; position:absolute; left:calc(10% ); right:calc(10%); top:17px; height:4px;
+  background:var(--rail); border-radius:2px; opacity:.85;
+}
+.station{position:relative; padding:0 8px; display:flex; flex-direction:column; align-items:center}
+.stop-dot{
+  position:relative; z-index:1; width:38px; height:38px; border-radius:50%;
+  background:var(--sheet); border:4px solid var(--rail); display:grid; place-items:center;
+  font-weight:780; font-size:14px;
+}
+.stop-dot.full{background:var(--rail); color:var(--rail-ink)}
+.station-name{margin-top:8px; font-weight:700; font-stretch:108%; text-align:center}
+.station-hint{font-size:12px; color:var(--muted); text-align:center; margin-bottom:10px; min-height:2.6em}
+.cars{display:flex; flex-direction:column; gap:6px; width:100%}
+.car{
+  width:100%; text-align:left; border:1px solid var(--line); background:var(--paper);
+  border-radius:999px; padding:6px 12px; cursor:pointer; display:flex; justify-content:space-between; gap:8px;
+}
+.car:hover{border-color:var(--rail)}
+.car .id{font-weight:700}
+.car .meta{font-size:12px; color:var(--muted); white-space:nowrap}
+.car.flag{border-color:var(--wait); background:var(--wait-bg)}
+@media (max-width:640px){
+  .rail{grid-template-columns:1fr; min-width:0}
+  .rail::before{left:17px; right:auto; top:19px; bottom:19px; width:4px; height:auto}
+  .station{display:grid; grid-template-columns:38px 1fr; column-gap:12px; align-items:start; padding:0 0 16px}
+  .station-name,.station-hint{text-align:left; margin-top:0}
+  .station-name{margin-top:8px}
+  .cars{grid-column:2}
+}
+
+/* ---------- stats ---------- */
+.stats-grid{display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:20px; align-items:start}
+@media (max-width:860px){ .stats-grid{grid-template-columns:1fr} }
+table{width:100%; border-collapse:collapse}
+th,td{text-align:left; padding:8px 8px; border-bottom:1px solid var(--line); vertical-align:top}
+th{font-size:13px; color:var(--muted); font-weight:600}
+td.r,th.r{text-align:right}
+.pill{display:inline-block; font-size:12px; font-weight:650; padding:2px 8px; border-radius:999px; white-space:nowrap}
+.pill.go{background:var(--go-bg); color:var(--go)}
+.pill.wait{background:var(--wait-bg); color:var(--wait)}
+.pill.stop{background:var(--stop-bg); color:var(--stop)}
+.pill.idle{background:var(--soft); color:var(--muted)}
+.counts{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px}
+.count .v{font-size:22px; font-weight:750; font-stretch:115%}
+.count .l{font-size:13px; color:var(--muted)}
+.bar{height:10px; background:var(--soft); border-radius:5px; overflow:hidden}
+.bar > span{display:block; height:100%; background:var(--go)}
+.inv{display:grid; gap:12px}
+.inv-row .top-line{display:flex; justify-content:space-between; gap:8px; margin-bottom:4px}
+.rules{list-style:none; margin:0; padding:0; display:grid; gap:8px}
+.rules li{display:grid; grid-template-columns:auto 1fr; gap:10px}
+svg text{fill:var(--muted); font-size:11px}
+.chart{position:relative}
+.chart svg{display:block; width:100%; height:auto; touch-action:pan-y}
+.chart svg:focus-visible{outline:2px solid var(--rail); outline-offset:2px}
+.tip{position:absolute; top:8px; pointer-events:none; background:var(--sheet); border:1px solid var(--line); border-radius:6px;
+  padding:7px 10px; font-size:12px; color:var(--muted); box-shadow:0 2px 10px rgba(15,25,38,.16); z-index:2; min-width:150px}
+.tip .tv{display:flex; align-items:center; gap:7px; margin-top:2px}
+.tip .tv b{color:var(--ink); font-size:15px; font-weight:750}
+.tip .key{display:inline-block; width:14px; border-top:2px solid var(--rail)}
+.tip .key.dash{border-top-style:dashed; border-color:var(--muted)}
+.tip .tn{margin-top:3px}
+.tile{display:flex; flex-direction:column; justify-content:flex-start; appearance:none; font:inherit; color:inherit; text-align:left; cursor:pointer; background:var(--paper);
+  border:1px solid var(--line); border-radius:6px; padding:8px 10px}
+.tile:hover{border-color:var(--rail)}
+.bal2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+.tile .v{font-size:24px; font-weight:760; font-stretch:115%; line-height:1.2}
+.tile .l{font-size:12px; color:var(--muted)}
+.tile .go-link{font-size:12px; color:var(--rail); font-weight:650; margin-top:2px}
+.sumrow{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px}
+.sumrow .l{font-size:12px; color:var(--muted)} .sumrow .v{font-size:18px; font-weight:740; font-stretch:112%}
+#chartDlg{width:min(880px, calc(100vw - 24px))}
+#chartDlg .body{display:grid; gap:14px; padding:20px}
+
+/* ---------- log ---------- */
+.log-tools{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px}
+.log-tools input,.log-tools select{padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:var(--paper)}
+.delta-pos{color:var(--go)} .delta-neg{color:var(--stop)}
+.table-wrap{overflow-x:auto}
+
+/* ---------- settings & forms ---------- */
+.form-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px 16px}
+label.f{display:grid; gap:4px; font-size:13px; color:var(--muted)}
+label.f input,label.f select,label.f textarea{
+  padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--paper); color:var(--ink); font-size:15px;
+}
+label.f input,label.f select,label.f textarea{width:100%; min-width:0}
+label.f textarea{min-height:64px; resize:vertical}
+label.check{display:flex; gap:8px; align-items:center; font-size:14px}
+.row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+.hint{font-size:13px; color:var(--muted)}
+.seg{display:flex; gap:6px; flex-wrap:wrap}
+.seg label{border:1px solid var(--line); border-radius:6px; padding:6px 12px; cursor:pointer; background:var(--paper); font-size:14px; color:var(--ink)}
+.seg input{position:absolute; opacity:0; pointer-events:none}
+.seg input:checked + span{font-weight:700}
+.seg label:has(input:checked){border-color:var(--rail); background:var(--sheet)}
+.seg label:has(input:focus-visible){outline:2px solid var(--rail); outline-offset:2px}
+
+dialog{
+  border:1px solid var(--line); border-radius:10px; padding:0; width:min(620px, calc(100vw - 24px));
+  background:var(--sheet); color:var(--ink); max-height:calc(100vh - 32px);
+}
+dialog::backdrop{background:rgba(15,25,38,.45)}
+dialog form{display:grid; gap:16px; padding:20px}
+.dlg-head{display:flex; justify-content:space-between; align-items:center; gap:12px}
+.dlg-foot{display:flex; justify-content:flex-end; gap:10px; border-top:1px solid var(--line); padding-top:14px}
+.calc{font-size:13px; color:var(--muted); background:var(--paper); border-radius:6px; padding:8px 10px}
+
+#toast{
+  position:fixed; left:50%; bottom:20px; transform:translateX(-50%); z-index:20;
+  background:var(--ink); color:var(--paper); padding:10px 16px; border-radius:8px; font-size:14px;
+  opacity:0; pointer-events:none; transition:opacity .2s;
+}
+#toast.show{opacity:1}
+.empty{display:grid; gap:12px; justify-items:start; padding:28px}
+@media (prefers-reduced-motion: reduce){ *{transition:none !important; animation:none !important} }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>RHS pipeline</h1>
+    <span id="sync" class="sync">Not connected</span>
+  </div>
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" aria-selected="true" data-tab="today">Today</button>
+    <button role="tab" aria-selected="false" data-tab="stats">Stats</button>
+    <button role="tab" aria-selected="false" data-tab="log">Log</button>
+    <button role="tab" aria-selected="false" data-tab="settings">Settings</button>
+  </nav>
+  <button id="addBtn" class="btn primary">Log entry</button>
+</header>
+
+<main>
+  <section id="tab-today" class="stack"></section>
+  <section id="tab-stats" class="stack" hidden></section>
+  <section id="tab-log" class="stack" hidden></section>
+  <section id="tab-settings" class="stack" hidden></section>
+</main>
+
+<dialog id="entry">
+  <form method="dialog" id="entryForm" novalidate>
+    <div class="dlg-head">
+      <h2 id="entryTitle">Log entry</h2>
+    </div>
+    <label class="f">What happened?
+      <select name="type" id="entryType"></select>
+    </label>
+    <div id="entryFields" class="form-grid"></div>
+    <div id="entryCalc" class="calc" hidden></div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" data-close>Cancel</button>
+      <button type="submit" class="btn primary" id="entrySave">Save entry</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="chartDlg">
+  <div class="body">
+    <div class="dlg-head"><h2 id="chartTitle">History</h2><button type="button" class="btn small" id="chartClose">Close</button></div>
+    <div class="seg" role="radiogroup" aria-label="Time range" id="chartRange">
+      <label><input type="radio" name="crange" value="14"><span>2 weeks</span></label>
+      <label><input type="radio" name="crange" value="28"><span>4 weeks</span></label>
+      <label><input type="radio" name="crange" value="all" checked><span>All</span></label>
+    </div>
+    <div id="chartBody"></div>
+    <div id="chartSum" class="sumrow"></div>
+  </div>
+</dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   Playbook v1.5 numbers. Saved into the data file so every device agrees.
+   ===================================================================== */
+const DEFAULTS = {
+  fee:110, lTarget:1400, bankTarget:800, cushion:800,
+  fuNeed:1107, evalNeed:196, dailyNew:3, fuPerDay:2,
+  buffer:1100, split:0.9, wireFee:30, minWire:400, wireTrigger:660,
+  owed:2600, mnqComm:2.44, fuMode:"standard",
+  startL:1400, startBank:800,
+  investors:[{name:"Investor A", capital:900},{name:"Investor B", capital:900}]
+};
+const EXPECT = { dayWin:60.9, fuWin:27.4, cycleWin:50, failedAvg:-8, evals28:24, fuInSession:95, d2PreOpen:75, slip:2 };
+
+const TYPES = [
+  ["trade","Trade"],
+  ["buy","Bought an evaluation"],
+  ["funded","Funded account issued"],
+  ["payout","Requested a payout"],
+  ["landed","Money landed"],
+  ["denied","Payout denied"],
+  ["deposit","Deposit bank to L"],
+  ["wire","Wire L to bank"],
+  ["investor","Paid an investor"],
+  ["self","Withdrew to myself"],
+  ["reconcile","Balance check"],
+  ["note","Note"],
+  ["init","Starting balances"]
+];
+const TYPE_LABEL = Object.fromEntries(TYPES);
+
+/* ---------- small helpers ---------- */
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
+const r2 = n => Math.round(n*100)/100;
+const MINUS = "−";
+const plural = (n, one, many) => `${n} ${n===1?one:many}`;
+function usd(n, sign=false){
+  const v = Math.round(n);
+  const s = "$" + Math.abs(v).toLocaleString("en-US");
+  if (v < 0) return MINUS + s;
+  return (sign && v > 0 ? "+" : "") + s;
+}
+function pct(a, b){ return b ? (100*a/b) : null; }
+function fmtPct(p){ return p == null ? "—" : p.toFixed(1) + "%"; }
+function pad(n, w=3){ return String(n).padStart(w, "0"); }
+function nowLocal(){
+  const d = new Date(); const z = n => String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+const dateOf = ts => String(ts).slice(0,10);
+function todayStr(){ return nowLocal().slice(0,10); }
+function niceTs(ts){
+  const d = dateOf(ts), t = String(ts).slice(11,16);
+  const today = todayStr();
+  return (d === today ? "Today" : d) + (t ? " " + t : "");
+}
+function daysBetween(a, b){ return Math.round((new Date(b) - new Date(a)) / 86400000); }
+function uid(){ return "e" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function toast(msg){ const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove("show"), 2600); }
+
+/* =====================================================================
+   Storage: GitHub (private data repo) or demo (this browser only)
+   ===================================================================== */
+const LS = {
+  get(k, d=""){ try{ const v = localStorage.getItem("rhs."+k); return v == null ? d : v; }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem("rhs."+k, v); }catch{} },
+  del(k){ try{ localStorage.removeItem("rhs."+k); }catch{} }
+};
+const store = {
+  mode: "none",              // "github" | "demo" | "none"
+  data: null,                // {version, config, events}
+  sha: null,
+  conn(){ return { owner:LS.get("owner"), repo:LS.get("repo","rhs-data"), path:LS.get("path","data/log.json"), branch:LS.get("branch","main"), token:LS.get("token") }; }
+};
+
+function b64encode(str){
+  const bytes = new TextEncoder().encode(str); let bin = "";
+  for (let i=0; i<bytes.length; i+=0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i+0x8000));
+  return btoa(bin);
+}
+function b64decode(b64){
+  const bin = atob(String(b64).replace(/\n/g,"")); const bytes = new Uint8Array(bin.length);
+  for (let i=0; i<bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+function ghUrl(c){ return `https://api.github.com/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/${c.path.split("/").map(encodeURIComponent).join("/")}`; }
+function ghHeaders(c, extra={}){ return { "Authorization":"Bearer "+c.token, "Accept":"application/vnd.github+json", "X-GitHub-Api-Version":"2022-11-28", ...extra }; }
+
+async function ghLoad(){
+  const c = store.conn();
+  const r = await fetch(ghUrl(c) + "?ref=" + encodeURIComponent(c.branch) + "&t=" + Date.now(), { headers: ghHeaders(c), cache:"no-store" });
+  if (r.status === 404) return { data:null, sha:null };
+  if (r.status === 401) throw new Error("GitHub rejected the token. Check it in Settings.");
+  if (!r.ok) throw new Error(`GitHub returned ${r.status}. Check owner, repo, branch and path.`);
+  const j = await r.json();
+  let text;
+  if (j.content) text = b64decode(j.content);
+  else {                                   // files over 1 MB come without content
+    const raw = await fetch(ghUrl(c) + "?ref=" + encodeURIComponent(c.branch), { headers: ghHeaders(c, {"Accept":"application/vnd.github.raw"}), cache:"no-store" });
+    text = await raw.text();
+  }
+  return { data: JSON.parse(text), sha: j.sha };
+}
+async function ghSave(data, sha, message){
+  const c = store.conn();
+  const body = { message, content: b64encode(JSON.stringify(data, null, 1)), branch: c.branch };
+  if (sha) body.sha = sha;
+  const r = await fetch(ghUrl(c), { method:"PUT", headers: ghHeaders(c, {"Content-Type":"application/json"}), body: JSON.stringify(body) });
+  if (r.status === 409 || r.status === 422) { const e = new Error("conflict"); e.conflict = true; throw e; }
+  if (r.status === 401 || r.status === 403) throw new Error("GitHub refused the save. The token needs Contents: read and write on this repo.");
+  if (!r.ok) throw new Error(`Save failed: GitHub returned ${r.status}.`);
+  const j = await r.json();
+  return j.content.sha;
+}
+function emptyData(){
+  return { version:1, config:{...DEFAULTS}, events:[{ id:uid(), ts:nowLocal(), type:"init", L:DEFAULTS.startL, bank:DEFAULTS.startBank }] };
+}
+function setSync(text, cls=""){ const s = $("#sync"); s.textContent = text; s.className = "sync " + cls; }
+
+/* change = function(data) that mutates a fresh copy; retried on conflicts */
+async function commit(change, message){
+  if (store.mode === "demo"){
+    change(store.data); LS.set("demo", JSON.stringify(store.data)); render(); return true;
+  }
+  if (store.mode !== "github"){ toast("Connect your data repo in Settings first."); return false; }
+  setSync("Saving…", "busy");
+  for (let attempt=0; attempt<4; attempt++){
+    try{
+      const fresh = await ghLoad();
+      const data = fresh.data || emptyData();
+      change(data);
+      store.sha = await ghSave(data, fresh.sha, message);
+      store.data = data;
+      setSync(`Saved to ${store.conn().owner}/${store.conn().repo}`, "ok");
+      render(); return true;
+    }catch(e){
+      if (e.conflict && attempt < 3) continue;
+      setSync(e.message || "Save failed", "bad"); toast(e.message || "Save failed"); return false;
+    }
+  }
+  return false;
+}
+async function connect(){
+  const c = store.conn();
+  if (!c.owner || !c.token){ store.mode = "none"; setSync("Not connected"); render(); return; }
+  setSync("Loading…", "busy");
+  try{
+    const { data, sha } = await ghLoad();
+    store.mode = "github";
+    if (!data){
+      const fresh = emptyData();
+      store.sha = await ghSave(fresh, null, "Create RHS log");
+      store.data = fresh;
+    } else { store.data = data; store.sha = sha; }
+    setSync(`Synced with ${c.owner}/${c.repo}`, "ok");
+  }catch(e){
+    store.mode = "none"; setSync(e.message, "bad");
+  }
+  render();
+}
+
+/* =====================================================================
+   Steps, brackets and default P&L
+   ===================================================================== */
+function steps(cfg){
+  const alt = cfg.fuMode === "alt";
+  return {
+    D1:{ label:"Day 1", dpp:20, live:1, win:630, dead:-980, prop:"1 NQ, target +31.5 pts, stop −49 pts", hedge:"1 MNQ opposite" },
+    D2:{ label:"Day 2", dpp:20, live:2, win:630, dead:-980, prop:"1 NQ, target +31.5 pts, stop −49 pts", hedge:"2 MNQ opposite" },
+    FU:{ label:"FU shot", dpp: alt?26:20, live: alt?4:3, win:2600, dead: alt?-981.5:-980,
+         prop: alt ? "13 MNQ, target +100 pts, stop −37.75 pts" : "1 NQ, target +130 pts, stop −49 pts", hedge: alt ? "4 MNQ opposite" : "3 MNQ opposite" },
+    CYCLE:{ label:"Payout cycle", dpp:40, live:0, win:1100, dead:-1080, prop:"2 NQ, target +27.5 pts, stop −27 pts", hedge:"no hedge" }
+  };
+}
+function defaultProp(step, result, cfg){
+  const s = steps(cfg)[step]; if (!s) return 0;
+  return result === "win" ? s.win : result === "dead" ? s.dead : 0;
+}
+function defaultLive(step, propPnl, liveMnq, cfg){
+  const s = steps(cfg)[step]; if (!s || !liveMnq) return 0;
+  return r2(-propPnl * (liveMnq*2 / s.dpp) - liveMnq*cfg.mnqComm);
+}
+
+/* =====================================================================
+   Replay: everything is calculated from the event log
+   ===================================================================== */
+function replay(data){
+  const cfg = { ...DEFAULTS, ...(data.config||{}) };
+  const m = {
+    cfg, L:0, bank:0, transit:[], acc:{}, chains:{}, series:[], deltas:{}, errors:[],
+    paidInv:{}, paidSelf:0, wireFees:0, wires:0, deposits:0, denied:0,
+    trades:[], buys:[], locks:[], payouts:[], landedPayouts:0, reconciles:[]
+  };
+  const events = [...(data.events||[])].sort((a,b)=> a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0);
+  m.events = events;
+  for (const e of events){
+    const L0 = m.L, B0 = m.bank;
+    try{ apply(m, e, cfg); }catch(err){ m.errors.push(`${niceTs(e.ts)}: ${err.message}`); }
+    m.deltas[e.id] = { dL: r2(m.L - L0), dB: r2(m.bank - B0) };
+    m.series.push({ ts:e.ts, pool: pool(m), paid: paidTotal(m), L: m.L, bank: m.bank });
+  }
+  return m;
+}
+function pool(m){ return m.L + m.bank + m.transit.reduce((s,t)=>s+t.amount, 0); }
+function paidTotal(m){ return Object.values(m.paidInv).reduce((s,v)=>s+v,0) + m.paidSelf; }
+function chainOf(m, acctId){ const a = m.acc[acctId]; return a ? m.chains[a.chain] : null; }
+
+function apply(m, e, cfg){
+  switch(e.type){
+    case "init": m.L = num(e.L); m.bank = num(e.bank); break;
+    case "buy": {
+      if (!e.acct) throw new Error("evaluation without an account ID");
+      if (m.acc[e.acct]) throw new Error(`account ${e.acct} was bought twice`);
+      const fee = e.fee != null ? num(e.fee) : cfg.fee;
+      m.bank -= fee;
+      m.acc[e.acct] = { id:e.acct, kind:"eval", state:"D1", chain:e.acct, since:e.ts, flag:null };
+      m.chains[e.acct] = { id:e.acct, fee, live:0, payNet:0, status:"eval", start:e.ts, end:null, fu:null };
+      m.buys.push(e); break;
+    }
+    case "trade": {
+      const a = m.acc[e.acct]; if (!a) throw new Error(`trade for unknown account ${e.acct}`);
+      const ch = m.chains[a.chain];
+      const live = num(e.livePnl); m.L += live; ch.live += live;
+      m.trades.push({ ...e, kind:a.kind });
+      if (a.kind === "eval"){
+        if (e.step === "D1"){
+          if (e.result === "win"){ a.state = "D2"; a.d1 = dateOf(e.ts); a.since = e.ts; a.flag = null; }
+          else if (e.result === "dead"){ a.state = "DEAD"; endChain(ch, "failed", e.ts, "D1"); }
+          else a.flag = "Day 1 closed unfinished: recalculate the bracket";
+        } else if (e.step === "D2"){
+          if (e.result === "win"){ a.state = "PASSED"; a.since = e.ts; a.flag = null; ch.status = "passed"; }
+          else if (e.result === "dead"){ a.state = "DEAD"; endChain(ch, "failed", e.ts, "D2"); }
+          else a.flag = "Day 2 closed unfinished: recalculate the bracket";
+        } else throw new Error(`${e.step} trade on evaluation ${e.acct}`);
+      } else {
+        a.bal += num(e.propPnl);
+        if (e.step === "FU"){
+          if (e.result === "win" || (e.result === "unfinished" && a.bal >= 1000)){ a.state = "LOCKED"; a.since = e.ts; a.flag = null; ch.status = "locked"; m.locks.push(e.ts); }
+          else if (e.result === "dead"){ a.state = "DEAD"; endChain(ch, "failed", e.ts, "FU"); }
+          else a.flag = "FU shot closed unfinished: recalculate the bracket";
+        } else if (e.step === "CYCLE"){
+          if (e.result === "dead"){ a.state = "ENDED"; endChain(ch, "done", e.ts); }
+          a.since = e.ts;
+        } else throw new Error(`${e.step} trade on funded account ${e.acct}`);
+      }
+      break;
+    }
+    case "funded": {
+      const a = m.acc[e.acct]; if (!a) throw new Error(`funded account for unknown evaluation ${e.acct}`);
+      if (!e.fu) throw new Error("funded account without an ID");
+      a.state = "FUNDED"; a.fu = e.fu;
+      const ch = m.chains[a.chain]; ch.status = "fu"; ch.fu = e.fu;
+      m.acc[e.fu] = { id:e.fu, kind:"fu", state:"FU", chain:a.chain, bal:0, since:e.ts, flag:null };
+      break;
+    }
+    case "payout": {
+      const a = m.acc[e.fu]; if (!a) throw new Error(`payout for unknown funded account ${e.fu}`);
+      const gross = num(e.gross); a.bal -= gross;
+      m.transit.push({ id:e.id, kind:"payout", to:"bank", amount:r2(gross*cfg.split), fu:e.fu, ts:e.ts });
+      m.payouts.push({ ...e, chain:a.chain }); break;
+    }
+    case "deposit": { const amt = num(e.amount); m.bank -= amt; m.transit.push({ id:e.id, kind:"deposit", to:"L", amount:amt, ts:e.ts }); m.deposits++; break; }
+    case "wire": {
+      const amt = num(e.amount), fee = e.fee != null ? num(e.fee) : cfg.wireFee;
+      m.L -= amt; m.transit.push({ id:e.id, kind:"wire", to:"bank", amount:r2(amt-fee), ts:e.ts }); m.wireFees += fee; m.wires++; break;
+    }
+    case "landed": {
+      const i = m.transit.findIndex(t => t.id === e.ref); if (i < 0) throw new Error("money landed for a transfer that isn't open");
+      const t = m.transit[i]; const amt = e.amount != null && e.amount !== "" ? num(e.amount) : t.amount;
+      if (t.to === "L") m.L += amt; else m.bank += amt;
+      if (t.kind === "payout"){ const ch = chainOf(m, t.fu); if (ch) ch.payNet += amt; m.landedPayouts++; }
+      m.transit.splice(i,1); break;
+    }
+    case "denied": {
+      const i = m.transit.findIndex(t => t.id === e.ref && t.kind === "payout"); if (i < 0) throw new Error("denied payout isn't open");
+      const t = m.transit[i]; m.transit.splice(i,1); m.denied++;
+      const a = m.acc[t.fu]; if (a) a.flag = "Payout denied"; break;
+    }
+    case "investor": { const amt = num(e.amount); m.bank -= amt; m.paidInv[e.who] = (m.paidInv[e.who]||0) + amt; break; }
+    case "self": { const amt = num(e.amount); m.bank -= amt; m.paidSelf += amt; break; }
+    case "reconcile": {
+      const dL = num(e.L) - m.L, dB = num(e.bank) - m.bank;
+      m.reconciles.push({ ts:e.ts, dL:r2(dL), dB:r2(dB) }); m.L = num(e.L); m.bank = num(e.bank); break;
+    }
+    case "note": break;
+    default: throw new Error(`unknown entry type ${e.type}`);
+  }
+}
+function endChain(ch, status, ts, at){ ch.status = status; ch.end = ts; if (at) ch.diedAt = at; }
+
+/* =====================================================================
+   Today: gates, money rules and the action list
+   ===================================================================== */
+function investorsOwed(cfg){
+  const inv = cfg.investors || []; const cap = inv.reduce((s,i)=>s+num(i.capital),0) || 1;
+  return inv.map(i => ({ name:i.name, owed: r2(cfg.owed * num(i.capital) / cap) }));
+}
+function plan(m){
+  const cfg = m.cfg, S = steps(cfg), today = todayStr();
+  const acc = Object.values(m.acc);
+  const evalDays = acc.filter(a => a.kind==="eval" && (a.state==="D1" || a.state==="D2"));
+  const passed = acc.filter(a => a.kind==="eval" && a.state==="PASSED");
+  const fuWait = acc.filter(a => a.kind==="fu" && a.state==="FU");
+  const locked = acc.filter(a => a.kind==="fu" && a.state==="LOCKED");
+  const evalsHeld = evalDays.length + passed.length;
+  const fundedHeld = fuWait.length + locked.length;
+  const waitingFu = fuWait.length + passed.length;
+  const inL = m.transit.filter(t=>t.to==="L").reduce((s,t)=>s+t.amount,0);
+  const inB = m.transit.filter(t=>t.to==="bank").reduce((s,t)=>s+t.amount,0);
+  const payoutOpen = m.transit.some(t=>t.kind==="payout");
+  const wireOpen = m.transit.some(t=>t.kind==="wire");
+  const depositOpen = m.transit.some(t=>t.kind==="deposit");
+  const buysToday = m.buys.filter(b => dateOf(b.ts) === today).length;
+  const fuToday = m.trades.filter(t => t.step==="FU" && dateOf(t.ts) === today).length;
+
+  const gateNeed = cfg.fuNeed + cfg.evalNeed*(evalDays.length+1) + (waitingFu >= 2 ? cfg.fuNeed : 0);
+  const newReasons = [];
+  if (m.bank < cfg.fee) newReasons.push(`bank ${usd(m.bank)} is below the ${usd(cfg.fee)} fee`);
+  if (m.L < gateNeed) newReasons.push(`L ${usd(m.L)} is below ${usd(gateNeed)}`);
+  if (evalsHeld >= 10) newReasons.push("10 evaluations already held");
+  if (fundedHeld >= 5) newReasons.push("5 funded accounts already held");
+  if (buysToday >= cfg.dailyNew) newReasons.push(`${cfg.dailyNew} bought today already`);
+  const newOk = newReasons.length === 0;
+  const fuOk = m.L >= cfg.fuNeed;
+
+  /* money rules (playbook section 7) */
+  const money = [];
+  const remainingInv = Math.max(0, cfg.owed - Object.values(m.paidInv).reduce((s,v)=>s+v,0));
+  if (m.L + inL < cfg.fuNeed + cfg.evalNeed && m.bank > cfg.bankTarget && !depositOpen){
+    const amt = Math.min(cfg.lTarget - m.L - inL, m.bank - cfg.fee);
+    if (amt >= 20) money.push({ cls:"money", what:`Deposit ${usd(amt)} to L`, how:`L is too low to start a new chain. This tops it back up to ${usd(cfg.lTarget)} from the bank.`, act:{type:"deposit", amount:Math.round(amt)} });
+  }
+  if (fuWait.length && m.L < cfg.fuNeed && !depositOpen && !payoutOpen && m.bank - cfg.fee >= cfg.fuNeed - m.L){
+    const amt = Math.ceil(cfg.fuNeed - m.L + 20);
+    money.push({ cls:"money", what:`Deposit ${usd(amt)} to L`, how:"So the waiting FU shot is fully hedged.", act:{type:"deposit", amount:amt} });
+  }
+  if (m.bank + inB < cfg.wireTrigger && !wireOpen && m.L - cfg.lTarget >= cfg.minWire){
+    const amt = Math.floor(m.L - cfg.lTarget);
+    money.push({ cls:"money", what:`Wire ${usd(amt)} from L to the bank`, how:`Bank is below ${usd(cfg.wireTrigger)} (two days of fees). Arrives in 1–3 days, ${usd(cfg.wireFee)} fee.`, act:{type:"wire", amount:amt} });
+  } else if (m.bank < cfg.fee && !wireOpen && !payoutOpen && m.L - (cfg.fuNeed + cfg.evalNeed) >= cfg.fee + cfg.wireFee){
+    const amt = Math.floor(m.L - (cfg.fuNeed + cfg.evalNeed));
+    money.push({ cls:"warn", what:`Emergency wire ${usd(amt)} from L to the bank`, how:`The bank can't pay the next fee and no payout is on its way. Keeps ${usd(cfg.fuNeed+cfg.evalNeed)} in L.`, act:{type:"wire", amount:amt} });
+  }
+  const payLimit = cfg.bankTarget + cfg.cushion;
+  if (m.L >= cfg.lTarget && !depositOpen && m.bank > payLimit + 50){
+    const surplus = Math.floor(m.bank - payLimit);
+    if (remainingInv > 0){
+      const amt = Math.min(surplus, remainingInv);
+      const split = investorsOwed(cfg).map(i => { const left = Math.max(0, i.owed - (m.paidInv[i.name]||0)); return { ...i, left }; });
+      const leftTot = split.reduce((s,i)=>s+i.left,0) || 1;
+      const parts = split.filter(i=>i.left>0).map(i => `${i.name} ${usd(amt*i.left/leftTot)}`).join(", ");
+      money.push({ cls:"money", what:`Pay investors ${usd(amt)}`, how:`Bank money above ${usd(payLimit)}. Split by what's still owed: ${parts}.`, act:{type:"investor", amount:Math.round(amt*split[0].left/leftTot), who:split.find(i=>i.left>0)?.name} });
+    } else if (surplus >= 1000){
+      money.push({ cls:"money", what:"Withdraw $1,000 to yourself", how:`Investors are repaid and the bank holds ${usd(surplus)} above ${usd(payLimit)}.`, act:{type:"self", amount:1000} });
+    }
+  }
+  for (const t of m.transit){
+    const age = daysBetween(dateOf(t.ts), today);
+    const exp = t.kind==="wire" ? 3 : 2;
+    if (age > exp) money.push({ cls:"warn", what:`${t.kind==="payout"?"Payout":t.kind==="wire"?"Wire":"Deposit"} of ${usd(t.amount)} hasn't landed`, how:`Sent ${dateOf(t.ts)}, ${age} days ago. Log it when it lands.`, act:{type:"landed", ref:t.id} });
+  }
+
+  /* phase 1: before the NY open */
+  const before = [...money];
+  for (const a of evalDays.filter(a=>a.state==="D2")){
+    if (a.d1 && a.d1 < today) before.push({ what:`Day 2 for ${a.id}`, how:`${S.D2.prop}. Live ${S.D2.hedge}.${a.flag ? " " + a.flag + "." : ""}`, act:{type:"trade", acct:a.id, step:"D2"}, cls:a.flag?"warn":"" });
+  }
+  for (const a of passed) before.push({ what:`${a.id} passed: log the funded account`, how:"Log it as soon as Lucid issues it, so the FU shot can run today.", act:{type:"funded", acct:a.id} });
+
+  /* phase 2: from the NY open */
+  const open = [];
+  fuWait.forEach((a, i) => {
+    if (!fuOk) open.push({ cls:"block", what:`FU shot for ${a.id} waits`, how:`L ${usd(m.L)} is below ${usd(cfg.fuNeed)}. Never trade it under-hedged.`, act:null });
+    else if (fuToday + i >= cfg.fuPerDay) open.push({ cls:"warn", what:`FU shot for ${a.id} tomorrow`, how:`${cfg.fuPerDay} FU shots a day at most.`, act:null });
+    else open.push({ what:`FU shot for ${a.id}`, how:`${S.FU.prop}. Live ${S.FU.hedge}. L needs ${usd(cfg.fuNeed)}: has ${usd(m.L)}.${a.flag?" "+a.flag+".":""}`, act:{type:"trade", acct:a.id, step:"FU"}, cls:a.flag?"warn":"" });
+  });
+  for (const a of evalDays.filter(a=>a.state==="D1")) open.push({ what:`Day 1 for ${a.id}`, how:`${S.D1.prop}. Live ${S.D1.hedge}.${a.flag?" "+a.flag+".":""}`, act:{type:"trade", acct:a.id, step:"D1"}, cls:a.flag?"warn":"" });
+  if (newOk) open.push({ what:"Buy a new evaluation", how:`Gate passes: L ${usd(m.L)} covers ${usd(gateNeed)}. ${cfg.dailyNew - buysToday} more allowed today.`, act:{type:"buy"} });
+  else open.push({ cls:"block", what:"No new evaluation now", how:newReasons.join("; ") + ".", act:null });
+
+  /* phase 3: any free gap */
+  const gaps = [];
+  for (const a of locked){
+    const w = Math.min(6000, Math.floor(a.bal - cfg.buffer));
+    const pending = m.transit.some(t => t.kind==="payout" && t.fu===a.id);
+    if (w >= 1000 && !pending) gaps.push({ cls:"money", what:`Request a ${usd(w)} payout from ${a.id}`, how:`Balance is ${usd(a.bal)} above the start; the buffer is ${usd(cfg.buffer)}.`, act:{type:"payout", fu:a.id, gross:w} });
+    else gaps.push({ what:`Payout cycle for ${a.id}`, how:`${S.CYCLE.prop}, unhedged. Balance ${usd(a.bal)} above the start.`, act:{type:"trade", acct:a.id, step:"CYCLE"} });
+  }
+
+  /* alerts */
+  const alerts = [];
+  const p = pool(m);
+  const stuckLevel = cfg.fuNeed + cfg.evalNeed + cfg.fee;
+  if (p < stuckLevel && m.transit.length === 0 && locked.length === 0) alerts.push(`Stuck: the pool is ${usd(p)}, below ${usd(stuckLevel)}, with nothing on its way. Top up about $300 or stop.`);
+  if (m.denied) alerts.push(`A payout has been denied (${m.denied}). Stop buying evaluations and review.`);
+  return { gateNeed, newOk, newReasons, fuOk, before, open, gaps, alerts, evalDays, passed, fuWait, locked, inL, inB, buysToday, remainingInv, payLimit, evalsHeld, fundedHeld };
+}
+
+/* =====================================================================
+   Stats
+   ===================================================================== */
+function stats(m){
+  const cfg = m.cfg, today = todayStr();
+  const T = m.trades;
+  const dayT = T.filter(t => (t.step==="D1"||t.step==="D2") && t.result!=="unfinished");
+  const fuT = T.filter(t => t.step==="FU");
+  const fuDone = fuT.filter(t => t.result!=="unfinished");
+  const cyc = T.filter(t => t.step==="CYCLE" && t.result!=="unfinished");
+  const d2 = T.filter(t => t.step==="D2");
+  const last = (arr, n) => arr.slice(-n);
+  const failed = Object.values(m.chains).filter(c => c.status==="failed").sort((a,b)=> a.end < b.end ? -1 : 1);
+  const failedRes = failed.map(c => -c.fee + c.live);
+  const avg = a => a.length ? a.reduce((s,v)=>s+v,0)/a.length : null;
+  const slipT = T.filter(t => t.slip !== "" && t.slip != null && t.step !== "CYCLE");
+  const since28 = new Date(Date.now() - 28*86400000).toISOString().slice(0,10);
+  const lastLock = m.locks.length ? m.locks[m.locks.length-1] : null;
+  const streak = m.buys.filter(b => !lastLock || b.ts > lastLock).length;
+  const fu20 = last(fuT, 20), d220 = last(d2, 20);
+  return {
+    dayWin: pct(dayT.filter(t=>t.result==="win").length, dayT.length), dayN: dayT.length,
+    fuWin: pct(fuDone.filter(t=>t.result==="win").length, fuDone.length), fuN: fuDone.length,
+    cycleWin: pct(cyc.filter(t=>t.result==="win").length, cyc.length), cycN: cyc.length,
+    failedAvg: avg(last(failedRes, 30)), failedN: Math.min(30, failedRes.length), failedAll: failedRes.length,
+    slipAvg: avg(last(slipT, 20).map(t => Math.abs(num(t.slip)))), slipN: Math.min(20, slipT.length),
+    fuInSession: pct(fu20.filter(t => t.inSession !== false).length, fu20.length), fuISN: fu20.length,
+    d2PreOpen: pct(d220.filter(t => t.preOpen && t.result!=="unfinished").length, d220.length), d2N: d220.length,
+    evals28: m.buys.filter(b => dateOf(b.ts) >= since28).length,
+    evalsAll: m.buys.length, locks: m.locks.length, payoutsReq: m.payouts.length, payoutsLanded: m.landedPayouts,
+    grossPayouts: m.payouts.reduce((s,p)=>s+num(p.gross),0),
+    feesPaid: m.buys.reduce((s,b)=>s+(b.fee!=null?num(b.fee):cfg.fee),0),
+    liveNet: T.reduce((s,t)=>s+num(t.livePnl),0),
+    streak, denied: m.denied
+  };
+}
+function chainSummary(m){
+  const C = Object.values(m.chains);
+  const by = st => C.filter(c => c.status === st).length;
+  const died = at => C.filter(c => c.status === "failed" && c.diedAt === at).length;
+  const lockedAll = C.filter(c => c.status === "locked" || c.status === "done");
+  const decided = died("D1") + died("D2") + died("FU") + lockedAll.length;
+  const result = c => -c.fee + c.live + c.payNet;
+  return {
+    total: C.length, open: by("eval") + by("passed") + by("fu"), failed: by("failed"), locked: by("locked"), done: by("done"),
+    d1: died("D1"), d2: died("D2"), fu: died("FU"), lockedAll: lockedAll.length, decided,
+    sumAll: C.reduce((s,c) => s + result(c), 0),
+    avgLocked: lockedAll.length ? lockedAll.reduce((s,c)=>s+result(c),0) / lockedAll.length : null
+  };
+}
+function judge(kind, s){
+  const early = (n, need) => n < need;
+  switch(kind){
+    case "dayWin":  if (early(s.dayN,30)) return ["idle","early"]; return s.dayWin>=50 && s.dayWin<=72 ? ["go","on track"] : ["stop","off"];
+    case "fuWin":   if (early(s.fuN,30)) return ["idle","early"]; return s.fuWin>=15 && s.fuWin<=40 ? ["go","on track"] : ["wait","watch"];
+    case "cycleWin":if (early(s.cycN,20)) return ["idle","early"]; return s.cycleWin>=30 && s.cycleWin<=70 ? ["go","on track"] : ["wait","watch"];
+    case "failedAvg": if (early(s.failedN,30)) return ["idle","early"]; return s.failedAvg >= -25 ? ["go","on track"] : ["stop","stop rule"];
+    case "slip":    if (early(s.slipN,20)) return ["idle","early"]; return s.slipAvg <= 2 ? ["go","on track"] : ["stop","stop rule"];
+    case "fuIS":    if (early(s.fuISN,20)) return ["idle","early"]; return s.fuInSession >= 95 ? ["go","on track"] : ["wait","switch FU shot"];
+    case "d2":      if (early(s.d2N,20)) return ["idle","early"]; return s.d2PreOpen >= 60 ? ["go","on track"] : ["wait","slower pace"];
+    case "denied":  return s.denied ? ["stop","stop rule"] : ["go","none"];
+  }
+  return ["idle",""];
+}
+
+/* =====================================================================
+   Rendering
+   ===================================================================== */
+let model = null;
+function render(){
+  if (!store.data){ renderEmpty(); renderSettings(); return; }
+  model = replay(store.data);
+  renderToday(); renderStats(); renderLog(); renderSettings();
+}
+function renderEmpty(){
+  const html = `<div class="panel empty">
+    <h2>No log connected yet</h2>
+    <p class="muted">Connect your private data repo in Settings, or load demo data to see how the page works. Demo data stays in this browser and is never saved to GitHub.</p>
+    <div class="row"><button class="btn primary" data-goto="settings">Open settings</button><button class="btn" data-demo>Load demo data</button></div>
+  </div>`;
+  $("#tab-today").innerHTML = html; $("#tab-stats").innerHTML = html; $("#tab-log").innerHTML = html;
+}
+function taskHtml(t){
+  const btn = t.act ? `<button class="btn small" data-act='${esc(JSON.stringify(t.act))}'>Log it</button>` : "";
+  return `<li class="task ${t.cls||""}"><div class="what"><strong>${esc(t.what)}</strong><div class="how">${esc(t.how)}</div></div>${btn}</li>`;
+}
+function phaseHtml(title, when, items, emptyText){
+  return `<li class="${items.length?"has":""}"><div><div class="phase-head"><h3>${esc(title)}</h3><span class="small muted">${esc(when)}</span></div>
+    ${items.length ? `<ul class="tasks">${items.map(taskHtml).join("")}</ul>` : `<p class="empty-phase">${esc(emptyText)}</p>`}</div></li>`;
+}
+function renderToday(){
+  const m = model, p = plan(m), cfg = m.cfg, S = steps(cfg);
+  const transitTxt = m.transit.length ? m.transit.map(t => `${usd(t.amount)} ${t.kind} to ${t.to==="L"?"L":"bank"}`).join(", ") : "nothing on its way";
+  const alerts = p.alerts.length ? `<div class="panel" style="border-color:var(--stop); background:var(--stop-bg)"><h2 style="color:var(--stop)">Stop and review</h2>${p.alerts.map(a=>`<p>${esc(a)}</p>`).join("")}</div>` : "";
+  const errs = m.errors.length ? `<div class="panel" style="border-color:var(--wait)"><h2>Entries that don't add up</h2>${m.errors.map(e=>`<p class="small">${esc(e)}</p>`).join("")}</div>` : "";
+
+  const stations = [
+    { key:"D1", name:"Day 1", hint:"Bought, waiting for its first day", list:p.evalDays.filter(a=>a.state==="D1") },
+    { key:"D2", name:"Day 2", hint:"Day 1 won, trade before the NY open", list:p.evalDays.filter(a=>a.state==="D2") },
+    { key:"PASSED", name:"Funded account", hint:"Passed, waiting for Lucid to issue it", list:p.passed },
+    { key:"FU", name:"FU shot", hint:`Needs ${usd(cfg.fuNeed)} in L`, list:p.fuWait },
+    { key:"LOCKED", name:"Locked", hint:"Floor at the start, payouts and cycles", list:p.locked }
+  ];
+  const carMeta = a => {
+    if (a.kind === "fu") return a.state==="LOCKED" ? `${usd(a.bal)} up` : `since ${niceTs(a.since).replace("Today ","")}`;
+    if (a.state === "D2") return `day 1 ${a.d1 === todayStr() ? "today" : a.d1}`;
+    return niceTs(a.since);
+  };
+  const rail = `<div class="panel"><div class="row" style="justify-content:space-between; margin-bottom:16px">
+      <h2>Chains on the line</h2>
+      <span class="small muted">${(cs => `${plural(cs.total,"chain","chains")} so far: ${cs.open} running, ${cs.locked} locked, ${cs.failed} failed, ${cs.done} finished after payouts`)(chainSummary(m))}. ${plural(p.evalsHeld,"evaluation","evaluations")} and ${plural(p.fundedHeld,"funded account","funded accounts")} held, of 10 and 5.</span></div>
+    <div class="rail-wrap"><div class="rail">${stations.map(st => `
+      <div class="station">
+        <div class="stop-dot ${st.list.length?"full":""}" aria-hidden="true">${st.list.length}</div>
+        <div><div class="station-name">${esc(st.name)}</div><div class="station-hint">${esc(st.hint)}</div></div>
+        <div class="cars">${st.list.map(a => `<button class="car ${a.flag?"flag":""}" data-car="${esc(a.id)}" title="${esc(a.flag||"Log the next step")}"><span class="id">${esc(a.id)}</span><span class="meta">${esc(carMeta(a))}</span></button>`).join("")}</div>
+      </div>`).join("")}</div></div></div>`;
+
+  const ledger = `<div class="panel"><h2>Money</h2>
+    <div class="ledger">
+      <div><div class="lab">Live account (L)</div><div class="val">${usd(m.L)}</div><div class="sub">target ${usd(cfg.lTarget)}</div></div>
+      <div><div class="lab">Bank</div><div class="val">${usd(m.bank)}</div><div class="sub">target ${usd(cfg.bankTarget)} plus ${usd(cfg.cushion)} cushion</div></div>
+      <div><div class="lab">On its way</div><div class="val">${usd(m.transit.reduce((s,t)=>s+t.amount,0))}</div><div class="sub">${esc(transitTxt)}</div></div>
+      <div><div class="lab">Pool</div><div class="val">${usd(pool(m))}</div><div class="sub">L, bank and money on its way</div></div>
+    </div>
+    <div class="gates">
+      <div class="gate"><span class="lamp ${p.newOk?"go":"stop"}"></span><div><div class="t">${p.newOk?"New evaluation allowed":"New evaluation blocked"}</div><div class="d">Needs L ≥ ${usd(cfg.fuNeed)} + ${usd(cfg.evalNeed)} × ${p.evalDays.length+1} chain${p.evalDays.length?"s":""}${(p.fuWait.length+p.passed.length)>=2?" + "+usd(cfg.fuNeed)+" for a second waiting FU":""} = ${usd(p.gateNeed)}. L has ${usd(m.L)}.${p.newOk?"":" "+esc(p.newReasons.filter(r=>!r.startsWith("L ")).map(r=>r[0].toUpperCase()+r.slice(1)+".").join(" "))}</div></div></div>
+      <div class="gate"><span class="lamp ${p.fuOk?"go":"stop"}"></span><div><div class="t">${p.fuOk?"FU shot can run":"FU shot must wait"}</div><div class="d">Needs L ≥ ${usd(cfg.fuNeed)}. ${S.FU.prop}, live ${S.FU.hedge}.</div></div></div>
+      <div class="gate"><span class="lamp ${p.remainingInv>0?"wait":"go"}"></span><div><div class="t">${p.remainingInv>0?`Investors still owed ${usd(p.remainingInv)}`:"Investors fully repaid"}</div><div class="d">Paid out only from bank money above ${usd(p.payLimit)}.</div></div></div>
+    </div></div>`;
+
+  const actions = `<div class="panel"><h2>Next actions</h2><ol class="order">
+    ${phaseHtml("Before the NY open", "money, day-2 trades, funded accounts", p.before, "Nothing due before the open.")}
+    ${phaseHtml("From the NY open", "15:30 Stockholm, one position at a time", p.open, "Nothing to trade.")}
+    ${phaseHtml("Any free gap", "payouts and unhedged cycles", p.gaps, "No locked funded accounts.")}
+  </ol></div>`;
+
+  $("#tab-today").innerHTML = `${alerts}${errs}<div class="today-grid">${actions}${ledger}</div>${rail}`;
+}
+
+/* A line chart with a crosshair tooltip. pts: [{values:[...], head, note}], series: [{name, step, dash}] */
+const CHARTS = {};
+function niceStep(range){ const raw = range/4, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw/p; return (f<1.5?1:f<3?2:f<7?5:10)*p; }
+function chartHtml(id, o){
+  const n = o.pts.length;
+  if (n < 2) return `<p class="muted small">The chart appears after a few entries.</p>`;
+  const narrow = window.innerWidth < 640;
+  const W = narrow ? 360 : 720, H = narrow ? 250 : (o.H || 260), P = { l: narrow ? 46 : 60, r: (o.refs && o.refs.length && !narrow) ? 118 : 14, t:18, b:30 };
+  const vals = o.pts.flatMap(p => p.values).concat((o.refs||[]).map(r => r.v));
+  let lo = Math.min(...vals), hi = Math.max(...vals); if (hi - lo < 100){ hi += 50; lo -= 50; }
+  const step = niceStep(hi - lo); lo = Math.floor(lo/step)*step; hi = Math.ceil(hi/step)*step;
+  const X = i => P.l + (W-P.l-P.r) * (i/(n-1)), Y = v => P.t + (H-P.t-P.b) * (1 - (v-lo)/(hi-lo));
+  o.geo = { W, H, P, n, X, Y }; CHARTS[id] = o;
+  let g = "";
+  for (let v = lo; v <= hi + 1e-9; v += step) g += `<line x1="${P.l}" x2="${W-P.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${P.l-8}" y="${Y(v)+4}" text-anchor="end">${usd(v)}</text>`;
+  for (const t of (o.xlabels||[])) g += `<line x1="${X(t.i)}" x2="${X(t.i)}" y1="${H-P.b}" y2="${H-P.b+4}" stroke="var(--line)"/><text x="${X(t.i)}" y="${H-P.b+17}" text-anchor="${t.i===0?"start":t.i===n-1?"end":"middle"}">${esc(t.text)}</text>`;
+  for (const r of (o.refs||[])) g += `<line x1="${P.l}" x2="${W-P.r}" y1="${Y(r.v)}" y2="${Y(r.v)}" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 4"/><text x="${narrow ? W-P.r : W-P.r+8}" y="${narrow ? Y(r.v)-5 : Y(r.v)+4}" text-anchor="${narrow?"end":"start"}">${esc(r.label)}</text>`;
+  o.series.forEach((s, k) => {
+    const pts = o.pts.map((p,i) => [X(i), Y(p.values[k])]);
+    const d = s.step ? pts.map((q,i) => i ? `H${q[0].toFixed(1)}V${q[1].toFixed(1)}` : `M${q[0].toFixed(1)},${q[1].toFixed(1)}`).join("")
+                     : pts.map((q,i) => `${i?"L":"M"}${q[0].toFixed(1)},${q[1].toFixed(1)}`).join("");
+    g += `<path d="${d}" fill="none" stroke="${s.dash?"var(--muted)":"var(--rail)"}" stroke-width="${s.dash?1.5:2}" ${s.dash?'stroke-dasharray="4 3"':""} stroke-linejoin="round"/>`;
+  });
+  if (o.marks){
+    const v = o.pts.map(p => p.values[0]); const iHi = v.indexOf(Math.max(...v)), iLo = v.indexOf(Math.min(...v)), iN = n-1;
+    const mk = (i, label, above, anchor) => { if (!above && Y(v[i]) + 18 > H - P.b - 4) above = true; if (above && Y(v[i]) - 10 < P.t + 4) above = false; return `<circle cx="${X(i)}" cy="${Y(v[i])}" r="4.5" fill="var(--sheet)" stroke="var(--rail)" stroke-width="2"/><text x="${X(i)}" y="${Y(v[i]) + (above?-10:18)}" text-anchor="${anchor}" style="fill:var(--ink); font-weight:650; paint-order:stroke; stroke:var(--sheet); stroke-width:4px">${esc(label)}</text>`; };
+    const anc = i => i < n*0.15 ? "start" : i > n*0.85 ? "end" : "middle";
+    if (iHi !== iN) g += mk(iHi, `High ${usd(v[iHi])}`, true, anc(iHi));
+    if (iLo !== iN && iLo !== iHi) g += mk(iLo, `Low ${usd(v[iLo])}`, false, anc(iLo));
+    g += `<circle cx="${X(iN)}" cy="${Y(v[iN])}" r="5.5" fill="var(--rail)" stroke="var(--sheet)" stroke-width="2"/><text x="${X(iN)}" y="${Y(v[iN]) - 11}" text-anchor="end" style="fill:var(--ink); font-weight:750; paint-order:stroke; stroke:var(--sheet); stroke-width:4px">Now ${usd(v[iN])}</text>`;
+  }
+  g += `<line class="xh" x1="0" x2="0" y1="${P.t}" y2="${H-P.b}" stroke="var(--ink)" stroke-width="1" opacity=".35" visibility="hidden"/>`;
+  g += o.series.map(() => `<circle class="hd" r="4.5" fill="var(--rail)" stroke="var(--sheet)" stroke-width="2" visibility="hidden"/>`).join("");
+  g += `<rect class="hit" x="${P.l}" y="${P.t}" width="${W-P.l-P.r}" height="${H-P.t-P.b}" fill="transparent"/>`;
+  return `<div class="chart" data-chart-id="${id}"><svg viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="${esc(o.label||"Chart")}. Use the arrow keys to step through points.">${g}</svg><div class="tip" hidden></div></div>`;
+}
+function wireCharts(root){
+  $$(".chart[data-chart-id]", root).forEach(el => {
+    const o = CHARTS[el.dataset.chartId]; if (!o) return;
+    const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), xh = svg.querySelector(".xh"), dots = [...svg.querySelectorAll(".hd")];
+    const { W, P, n, X, Y } = o.geo; let cur = n-1;
+    const show = i => {
+      cur = Math.max(0, Math.min(n-1, i)); const p = o.pts[cur], x = X(cur);
+      xh.setAttribute("x1", x); xh.setAttribute("x2", x); xh.setAttribute("visibility", "visible");
+      dots.forEach((d,k) => { d.setAttribute("cx", x); d.setAttribute("cy", Y(p.values[k])); d.setAttribute("visibility","visible"); if (o.series[k].dash) d.setAttribute("fill","var(--muted)"); });
+      tip.replaceChildren();
+      const head = document.createElement("div"); head.textContent = p.head; tip.append(head);
+      o.series.forEach((s,k) => {
+        const row = document.createElement("div"); row.className = "tv";
+        const key = document.createElement("span"); key.className = "key" + (s.dash ? " dash" : "");
+        const b = document.createElement("b"); b.textContent = usd(p.values[k]);
+        const nm = document.createElement("span"); nm.textContent = s.name;
+        row.append(key, b, nm); tip.append(row);
+      });
+      if (p.note){ const nt = document.createElement("div"); nt.className = "tn"; nt.textContent = p.note; tip.append(nt); }
+      tip.hidden = false;
+      const r = svg.getBoundingClientRect(), sx = x * r.width / W, tw = tip.offsetWidth;
+      tip.style.left = (sx + 14 + tw > r.width ? Math.max(0, sx - tw - 14) : sx + 14) + "px";
+    };
+    const hide = () => { tip.hidden = true; xh.setAttribute("visibility","hidden"); dots.forEach(d => d.setAttribute("visibility","hidden")); };
+    svg.addEventListener("pointermove", e => { const r = svg.getBoundingClientRect(); const sx = (e.clientX - r.left) * W / r.width; show(Math.round((sx - P.l) / (W - P.l - P.r) * (n-1))); });
+    svg.addEventListener("pointerleave", hide);
+    svg.addEventListener("focus", () => show(cur));
+    svg.addEventListener("blur", hide);
+    svg.addEventListener("keydown", e => { if (e.key === "ArrowLeft"){ show(cur-1); e.preventDefault(); } if (e.key === "ArrowRight"){ show(cur+1); e.preventDefault(); } });
+  });
+}
+function dayLabels(pts){
+  const firsts = []; let last = null;
+  pts.forEach((p,i) => { const d = dateOf(p.ts); if (d !== last){ firsts.push({ i, text: d.slice(5) }); last = d; } });
+  const want = window.innerWidth < 640 ? 3 : 5;
+  if (firsts.length <= want) return firsts;
+  const pick = []; for (let k = 0; k < want; k++) pick.push(firsts[Math.round(k*(firsts.length-1)/(want-1))]);
+  return pick;
+}
+function sparkSvg(values, ref){
+  const v = values.slice(-80); if (v.length < 2) return "";
+  const W = 140, H = 30, lo = Math.min(...v, ref), hi = Math.max(...v, ref), sp = (hi - lo) || 1;
+  const y = x => (H-3) - (H-6) * (x - lo) / sp;
+  const pts = v.map((x,i) => `${(i*(W/(v.length-1))).toFixed(1)},${y(x).toFixed(1)}`).join(" ");
+  return `<svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true" style="display:block; margin:8px 0 4px"><line x1="0" x2="${W}" y1="${y(ref)}" y2="${y(ref)}" stroke="var(--muted)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/><polyline fill="none" stroke="var(--rail)" stroke-width="1.5" vector-effect="non-scaling-stroke" points="${pts}"/></svg>`;
+}
+let chartKey = "L";
+function openBalance(key){
+  chartKey = key; $("#chartTitle").textContent = key === "L" ? "Live account (L) over time" : "Bank over time";
+  drawBalance(); $("#chartDlg").showModal();
+}
+function drawBalance(){
+  const m = model, cfg = m.cfg, key = chartKey;
+  const range = ($('input[name="crange"]:checked')||{}).value || "all";
+  let pts = m.series.map((s,i) => ({ ts:s.ts, v:s[key], e:m.events[i], d: (m.deltas[m.events[i].id]||{})[key==="L"?"dL":"dB"] }))
+                    .filter((p,i,a) => i === 0 || i === a.length-1 || p.d);
+  if (range !== "all"){ const since = new Date(Date.now() - num(range)*86400000).toISOString().slice(0,10); const keep = pts.filter(p => dateOf(p.ts) >= since); if (keep.length >= 2) pts = keep; }
+  const name = key === "L" ? "L" : "Bank";
+  const refs = key === "L" ? [{ v:cfg.lTarget, label:`Target ${usd(cfg.lTarget)}` }, { v:cfg.fuNeed, label:`FU shot ${usd(cfg.fuNeed)}` }]
+                           : [{ v:cfg.bankTarget, label:`Target ${usd(cfg.bankTarget)}` }, { v:cfg.bankTarget+cfg.cushion, label:`Pay-out ${usd(cfg.bankTarget+cfg.cushion)}` }];
+  const cpts = pts.map(p => ({ ts:p.ts, values:[p.v], head:niceTs(p.ts), note: p.e ? `${TYPE_LABEL[p.e.type]}${p.e.acct?" "+p.e.acct:p.e.fu?" "+p.e.fu:""}${p.d?", "+usd(p.d,true):""}` : "" }));
+  $("#chartBody").innerHTML = chartHtml("balance", { pts:cpts, series:[{ name, step:true }], refs, marks:true, xlabels: dayLabels(cpts), H:280, label:`${name} balance over time` });
+  wireCharts($("#chartBody"));
+  const v = pts.map(p => p.v); const iHi = v.indexOf(Math.max(...v)), iLo = v.indexOf(Math.min(...v));
+  const cell = (l, val, sub) => `<div><div class="l">${esc(l)}</div><div class="v">${val}</div>${sub?`<div class="l">${esc(sub)}</div>`:""}</div>`;
+  $("#chartSum").innerHTML = pts.length < 2 ? "" :
+    cell("Now", usd(v[v.length-1])) + cell("Start of range", usd(v[0]), niceTs(pts[0].ts)) +
+    cell("Highest", usd(v[iHi]), niceTs(pts[iHi].ts)) + cell("Lowest", usd(v[iLo]), niceTs(pts[iLo].ts)) +
+    cell("Target", usd(refs[0].v), key === "L" ? "refills after locks" : `pay out above ${usd(refs[1].v)}`);
+}
+function equitySvg(all){
+  const byDay = new Map(); for (const s of all) byDay.set(dateOf(s.ts), s);
+  const series = [...byDay.values()];
+  const cpts = series.map(s => ({ ts:s.ts, values:[s.pool, s.pool + s.paid], head: dateOf(s.ts) }));
+  if (series.length >= 2) return chartHtml("pool", { pts:cpts, series:[{ name:"Pool" }, { name:"With payouts", dash:true }], xlabels: dayLabels(cpts), H:220, label:"Pool at the end of each day" }) +
+    `<div class="row small muted" style="gap:18px; margin-top:6px"><span><svg width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke="var(--rail)" stroke-width="2"/></svg> Pool</span><span><svg width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 3"/></svg> Pool plus everything paid out</span></div>`;
+  if (series.length < 2) return `<p class="muted small">The chart appears after a few entries.</p>`;
+  const W = 640, H = 200, P = { l:52, r:12, t:12, b:24 };
+  const ys = series.flatMap(s => [s.pool, s.pool + s.paid]);
+  let lo = Math.min(...ys), hi = Math.max(...ys); if (hi - lo < 100){ hi += 50; lo -= 50; }
+  const x = i => P.l + (W-P.l-P.r) * (i/(series.length-1));
+  const y = v => P.t + (H-P.t-P.b) * (1 - (v-lo)/(hi-lo));
+  const line = f => series.map((s,i)=>`${x(i).toFixed(1)},${y(f(s)).toFixed(1)}`).join(" ");
+  const ticks = [lo, (lo+hi)/2, hi];
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Pool and paid out over time">
+    ${ticks.map(v => `<line x1="${P.l}" x2="${W-P.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${P.l-6}" y="${y(v)+4}" text-anchor="end">${usd(v)}</text>`).join("")}
+    <polyline fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 3" points="${line(s=>s.pool+s.paid)}"/>
+    <polyline fill="none" stroke="var(--rail)" stroke-width="2.5" points="${line(s=>s.pool)}"/>
+    <text x="${P.l}" y="${H-6}">${esc(dateOf(series[0].ts))}</text><text x="${W-P.r}" y="${H-6}" text-anchor="end">${esc(dateOf(series[series.length-1].ts))}</text>
+  </svg>
+  <div class="row small muted" style="gap:18px"><span><svg width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke="var(--rail)" stroke-width="2.5"/></svg> Pool</span><span><svg width="22" height="8"><line x1="0" x2="22" y1="4" y2="4" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 3"/></svg> Pool plus everything paid out</span></div>`;
+}
+function renderStats(){
+  const m = model, s = stats(m), cfg = m.cfg;
+  const row = (label, actual, expected, n, kind) => { const [c, t] = judge(kind, s); return `<tr><td>${label}</td><td class="r">${actual}</td><td class="r muted">${expected}</td><td class="r muted">${n}</td><td><span class="pill ${c}">${t}</span></td></tr>`; };
+  const table = `<div class="panel"><h2>Actual against the playbook</h2><div class="table-wrap"><table>
+    <thead><tr><th>Measure</th><th class="r">Actual</th><th class="r">Expected</th><th class="r">Sample</th><th>Status</th></tr></thead><tbody>
+    ${row("Evaluation days won", fmtPct(s.dayWin), "60.9%", s.dayN, "dayWin")}
+    ${row("FU shots locked", fmtPct(s.fuWin), "27.4%", s.fuN, "fuWin")}
+    ${row("Payout cycles won", fmtPct(s.cycleWin), "50%", s.cycN, "cycleWin")}
+    ${row("Average failed chain, last 30", s.failedAvg==null?"—":usd(s.failedAvg,true), "about −$8", s.failedN, "failedAvg")}
+    ${row("Live slippage per exit, last 20", s.slipAvg==null?"—":s.slipAvg.toFixed(2)+" pts", "under 2 pts", s.slipN, "slip")}
+    ${row("FU shots finished in session, last 20", fmtPct(s.fuInSession), "95% or more", s.fuISN, "fuIS")}
+    ${row("Day 2 finished before the open, last 20", fmtPct(s.d2PreOpen), "about 75%", s.d2N, "d2")}
+    ${row("Payouts denied", String(s.denied), "0", s.payoutsReq, "denied")}
+    </tbody></table></div><p class="hint" style="margin-top:10px">“Early” means the sample is still too small to judge.</p></div>`;
+
+  const counts = `<div class="panel"><h2>Totals</h2><div class="counts">
+    <div class="count"><div class="v">${s.evalsAll}</div><div class="l">evaluations bought</div></div>
+    <div class="count"><div class="v">${s.evals28}</div><div class="l">in the last 4 weeks (expected about 24)</div></div>
+    <div class="count"><div class="v">${s.locks}</div><div class="l">locks</div></div>
+    <div class="count"><div class="v">${s.payoutsReq}</div><div class="l">payouts requested</div></div>
+    <div class="count"><div class="v">${usd(s.grossPayouts)}</div><div class="l">gross payouts</div></div>
+    <div class="count"><div class="v">${usd(s.feesPaid)}</div><div class="l">evaluation fees</div></div>
+
+    <div class="count"><div class="v">${usd(m.wireFees)}</div><div class="l">wire fees (${m.wires} wires)</div></div>
+  </div></div>`;
+
+  const cs = chainSummary(m);
+  const share = n => cs.decided ? fmtPct(100*n/cs.decided) : "—";
+  const chains = `<div class="panel"><h2>Chains</h2>
+    <div class="counts" style="margin-bottom:14px">
+      <div class="count"><div class="v">${cs.total}</div><div class="l">chains in total</div></div>
+      <div class="count"><div class="v">${cs.open}</div><div class="l">running now</div></div>
+      <div class="count"><div class="v">${cs.locked}</div><div class="l">locked, still paying</div></div>
+      <div class="count"><div class="v">${cs.done}</div><div class="l">finished after payouts</div></div>
+      <div class="count"><div class="v">${cs.failed}</div><div class="l">failed</div></div>
+      <div class="count"><div class="v">${usd(cs.sumAll,true)}</div><div class="l">all chains together</div></div>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>How chains ended</th><th class="r">Chains</th><th class="r">Share</th><th class="r">Expected</th></tr></thead><tbody>
+      <tr><td>Died on day 1</td><td class="r">${cs.d1}</td><td class="r">${share(cs.d1)}</td><td class="r muted">39.1%</td></tr>
+      <tr><td>Died on day 2</td><td class="r">${cs.d2}</td><td class="r">${share(cs.d2)}</td><td class="r muted">23.8%</td></tr>
+      <tr><td>FU died on its shot</td><td class="r">${cs.fu}</td><td class="r">${share(cs.fu)}</td><td class="r muted">26.9%</td></tr>
+      <tr><td>Locked</td><td class="r">${cs.lockedAll}</td><td class="r">${share(cs.lockedAll)}</td><td class="r muted">10.2%</td></tr>
+    </tbody></table></div>
+    <p class="hint" style="margin-top:10px">Shares count only chains whose outcome is known. Locked chains average ${cs.avgLocked==null?"—":usd(cs.avgLocked,true)} so far, including their payouts.</p></div>`;
+  const balances = `<div class="panel"><h2>Balances</h2><div class="bal2">
+    <button class="tile" data-chart="L"><div class="l">Live account (L)</div><div class="v">${usd(m.L)}</div><div class="l">target ${usd(cfg.lTarget)}</div>${sparkSvg(m.series.map(x=>x.L), cfg.lTarget)}<div class="go-link">Show history</div></button>
+    <button class="tile" data-chart="bank"><div class="l">Bank</div><div class="v">${usd(m.bank)}</div><div class="l">target ${usd(cfg.bankTarget)}</div>${sparkSvg(m.series.map(x=>x.bank), cfg.bankTarget)}<div class="go-link">Show history</div></button>
+  </div></div>`;
+  const owed = investorsOwed(cfg);
+  const inv = `<div class="panel"><h2>Investors</h2><div class="inv">${owed.map(i => { const paid = m.paidInv[i.name]||0; const w = Math.min(100, 100*paid/(i.owed||1)); return `<div class="inv-row"><div class="top-line"><span>${esc(i.name)}</span><span class="muted">${usd(paid)} of ${usd(i.owed)}</span></div><div class="bar"><span style="width:${w}%"></span></div></div>`; }).join("")}
+    <p class="hint">Paid to you so far: ${usd(m.paidSelf)}.</p></div></div>`;
+
+  const rules = [
+    [s.denied===0, "No payout denied or account flagged"],
+    [true, "Lucid's prices and rules unchanged (check yourself)"],
+    [!plan(m).alerts.some(a=>a.startsWith("Stuck")), `Pool can fund a new chain (stuck level ${usd(cfg.fuNeed+cfg.evalNeed+cfg.fee)})`],
+    [!(s.failedN>=30 && s.failedAvg < -25), "Failed chains average −$25 or better over 30"],
+    [!(s.slipN>=20 && s.slipAvg > 2), "Live slippage 2 pts or less over 20 exits"],
+  ];
+  const stop = `<div class="panel"><h2>Stop rules</h2><ul class="rules">${rules.map(([ok, t]) => `<li><span class="lamp ${ok?"go":"stop"}"></span><span>${esc(t)}</span></li>`).join("")}
+    <li><span class="lamp ${s.streak>=40?"wait":"go"}"></span><span>${plural(s.streak,"evaluation","evaluations")} since the last lock${s.streak>=40?": review the log (streak check)":""}</span></li></ul>
+    <p class="hint" style="margin-top:10px">Two execution errors in one week also stops trading. Log them as notes.</p></div>`;
+
+  const eq = `<div class="panel"><h2>Pool at the end of each day</h2>${equitySvg(m.series)}</div>`;
+  $("#tab-stats").innerHTML = `<div class="stats-grid"><div class="stack">${table}${eq}${chains}</div><div class="stack">${balances}${counts}${inv}${stop}</div></div>`;
+  wireCharts($("#tab-stats"));
+}
+
+function describe(e){
+  switch(e.type){
+    case "init": return `L ${usd(e.L)}, bank ${usd(e.bank)}`;
+    case "buy": return `fee ${usd(e.fee ?? model.cfg.fee)}`;
+    case "trade": {
+      const res = e.result==="win"?"won":e.result==="dead"?"died":"unfinished";
+      const bits = [`${steps(model.cfg)[e.step]?.label||e.step} ${res}`, e.dir, `prop ${usd(num(e.propPnl),true)}`];
+      if (num(e.liveMnq)) bits.push(`live ${e.liveMnq} MNQ ${usd(num(e.livePnl),true)}`);
+      if (e.slip !== "" && e.slip != null) bits.push(`slippage ${e.slip} pts`);
+      if (e.step==="D2" && e.preOpen) bits.push("before the open");
+      if (e.inSession === false) bits.push("past the session");
+      return bits.join(", ");
+    }
+    case "funded": return `${e.acct} became ${e.fu}`;
+    case "payout": return `gross ${usd(e.gross)}`;
+    case "landed": {
+      const src = model.events.find(x => x.id === e.ref);
+      const what = !src ? "transfer" : src.type==="payout" ? `payout from ${src.fu}` : src.type==="wire" ? "wire to the bank" : "deposit to L";
+      return e.amount != null && e.amount !== "" ? `${what}, ${usd(e.amount)}` : `${what}, as expected`;
+    }
+    case "denied": return "payout denied";
+    case "deposit": return `${usd(e.amount)} to L`;
+    case "wire": return `${usd(e.amount)} to bank, fee ${usd(e.fee ?? model.cfg.wireFee)}`;
+    case "investor": return `${esc(e.who)} ${usd(e.amount)}`;
+    case "self": return usd(e.amount);
+    case "reconcile": return `L ${usd(e.L)}, bank ${usd(e.bank)}`;
+    case "note": return e.text || "";
+  }
+  return "";
+}
+let logLimit = 60;
+function renderLog(){
+  const m = model;
+  const ft = LS.get("logType",""), fq = LS.get("logQ","").toLowerCase();
+  const rows = [...m.events].reverse().filter(e => (!ft || e.type===ft) && (!fq || JSON.stringify(e).toLowerCase().includes(fq)));
+  const d = v => v ? `<span class="${v>0?"delta-pos":"delta-neg"}">${usd(v,true)}</span>` : "";
+  $("#tab-log").innerHTML = `<div class="panel">
+    <div class="log-tools">
+      <select id="logType" aria-label="Filter by type"><option value="">All entries</option>${TYPES.map(([k,l])=>`<option value="${k}" ${k===ft?"selected":""}>${esc(l)}</option>`).join("")}</select>
+      <input id="logQ" type="search" placeholder="Search account or text" value="${esc(fq)}" aria-label="Search">
+      <span class="muted small" style="margin-right:auto">${rows.length} of ${m.events.length} entries</span>
+      <button class="btn small danger" id="undoBtn" ${m.events.length>1?"":"disabled"}>Undo last entry</button>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>When</th><th>Entry</th><th>Account</th><th>Details</th><th class="r">L</th><th class="r">Bank</th></tr></thead><tbody>
+    ${rows.slice(0,logLimit).map(e => `<tr><td class="small" style="white-space:nowrap">${esc(niceTs(e.ts))}</td><td>${esc(TYPE_LABEL[e.type]||e.type)}</td><td>${esc(e.acct||e.fu||"")}</td><td class="small">${esc(describe(e))}${e.note?` <span class="muted">(${esc(e.note)})</span>`:""}</td><td class="r small">${d(m.deltas[e.id]?.dL)}</td><td class="r small">${d(m.deltas[e.id]?.dB)}</td></tr>`).join("")}
+    </tbody></table></div>${rows.length>logLimit?`<div class="row" style="margin-top:12px"><button class="btn small" id="moreLog">Show ${Math.min(60, rows.length-logLimit)} more</button><span class="hint">Showing the latest ${logLimit}.</span></div>`:""}</div>`;
+  const more = $("#moreLog"); if (more) more.onclick = () => { logLimit += 60; renderLog(); };
+  $("#logType").onchange = e => { LS.set("logType", e.target.value); renderLog(); };
+  $("#logQ").oninput = e => { LS.set("logQ", e.target.value); clearTimeout(renderLog._t); renderLog._t = setTimeout(()=>{ renderLog(); $("#logQ").focus(); $("#logQ").setSelectionRange(9999,9999); }, 250); };
+  $("#undoBtn").onclick = undoLast;
+}
+
+function renderSettings(){
+  const c = store.conn(); const cfg = { ...DEFAULTS, ...(store.data?.config||{}) };
+  const theme = LS.get("theme","auto");
+  $("#tab-settings").innerHTML = `
+  <div class="panel"><h2>Data repo</h2>
+    <p class="hint" style="margin-bottom:14px">The log lives in your private repo. The token is kept only in this browser. Create a fine-grained token with access to this one repo and the permission Contents: read and write.</p>
+    <form id="connForm" class="form-grid">
+      <label class="f">GitHub owner<input name="owner" value="${esc(c.owner)}" placeholder="007abbe" autocomplete="off"></label>
+      <label class="f">Data repo<input name="repo" value="${esc(c.repo)}" autocomplete="off"></label>
+      <label class="f">File path<input name="path" value="${esc(c.path)}" autocomplete="off"></label>
+      <label class="f">Branch<input name="branch" value="${esc(c.branch)}" autocomplete="off"></label>
+      <label class="f" style="grid-column:1/-1">Token<input name="token" type="password" value="${esc(c.token)}" placeholder="github_pat_…" autocomplete="off"></label>
+      <div class="row" style="grid-column:1/-1"><button class="btn primary" type="submit">Save and connect</button>
+      <button class="btn" type="button" id="disconnect">Forget token on this device</button>
+      <span class="hint">${store.mode==="github"?"Connected.":store.mode==="demo"?"Showing demo data.":"Not connected."}</span></div>
+    </form>
+  </div>
+  <div class="panel"><h2>Demo data</h2>
+    <p class="hint" style="margin-bottom:12px">About six weeks of made-up chains that follow the playbook. It stays in this browser and is never saved to GitHub.</p>
+    <div class="row"><button class="btn" data-demo>Load demo data</button>${store.mode==="demo"?`<button class="btn danger" id="clearDemo">Clear demo data</button>`:""}
+    ${store.data?`<button class="btn" id="exportBtn">Download the log as JSON</button>`:""}</div>
+  </div>
+  <div class="panel"><h2>Playbook numbers</h2>
+    <p class="hint" style="margin-bottom:14px">From playbook v1.5. Saved in the log file, so every device uses the same numbers.</p>
+    <form id="cfgForm" class="form-grid">
+      ${[["fee","Evaluation fee"],["lTarget","L target"],["bankTarget","Bank target"],["cushion","Cushion"],["fuNeed","L needed for an FU shot"],["evalNeed","L per chain in evaluation days"],["dailyNew","New evaluations per day, max"],["fuPerDay","FU shots per day, max"],["owed","Owed to investors in total"],["wireFee","Wire fee"],["minWire","Smallest regular wire"],["wireTrigger","Wire when the bank is below"],["mnqComm","MNQ commission per round trip"]].map(([k,l]) => `<label class="f">${l}<input name="${k}" type="number" step="any" value="${esc(cfg[k])}"></label>`).join("")}
+      <label class="f">FU shot<select name="fuMode"><option value="standard" ${cfg.fuMode!=="alt"?"selected":""}>1 NQ, +130 pts, live 3 MNQ</option><option value="alt" ${cfg.fuMode==="alt"?"selected":""}>13 MNQ, +100 pts, live 4 MNQ</option></select></label>
+      ${(cfg.investors||[]).map((inv,i) => `<label class="f">Investor ${i+1} name<input name="invName${i}" value="${esc(inv.name)}"></label><label class="f">Investor ${i+1} capital<input name="invCap${i}" type="number" step="any" value="${esc(inv.capital)}"></label>`).join("")}
+      <div class="row" style="grid-column:1/-1"><button class="btn primary" type="submit" ${store.data?"":"disabled"}>Save numbers</button>
+      <span class="hint">Switching to the 13 MNQ FU shot also needs L ${usd(1450)}, bank ${usd(750)} and ${usd(1230)} for an FU shot.</span></div>
+    </form>
+  </div>
+  <div class="panel"><h2>Appearance</h2>
+    <div class="seg" role="radiogroup" aria-label="Theme">${["auto","light","dark"].map(t => `<label><input type="radio" name="theme" value="${t}" ${theme===t?"checked":""}><span>${t==="auto"?"Match the system":t==="light"?"Light":"Dark"}</span></label>`).join("")}</div>
+  </div>`;
+  $("#connForm").onsubmit = e => {
+    e.preventDefault(); const f = new FormData(e.target);
+    for (const k of ["owner","repo","path","branch","token"]) LS.set(k, String(f.get(k)||"").trim());
+    LS.set("mode","github"); connect();
+  };
+  $("#disconnect").onclick = () => { LS.del("token"); if (store.mode==="github"){ store.mode="none"; store.data=null; } setSync("Not connected"); render(); toast("Token removed from this device."); };
+  const cd = $("#clearDemo"); if (cd) cd.onclick = () => { LS.del("demo"); LS.del("mode"); store.mode="none"; store.data=null; setSync("Not connected"); render(); };
+  const ex = $("#exportBtn"); if (ex) ex.onclick = () => { const b = new Blob([JSON.stringify(store.data,null,1)],{type:"application/json"}); const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "rhs-log.json"; a.click(); URL.revokeObjectURL(a.href); };
+  $("#cfgForm").onsubmit = e => {
+    e.preventDefault(); const f = new FormData(e.target); const next = {};
+    for (const k of ["fee","lTarget","bankTarget","cushion","fuNeed","evalNeed","dailyNew","fuPerDay","owed","wireFee","minWire","wireTrigger","mnqComm"]) next[k] = num(f.get(k));
+    next.fuMode = f.get("fuMode");
+    next.investors = (cfg.investors||[]).map((inv,i) => ({ name:String(f.get("invName"+i)||inv.name), capital:num(f.get("invCap"+i)) }));
+    commit(d => { d.config = { ...DEFAULTS, ...(d.config||{}), ...next }; }, "Update playbook numbers").then(ok => ok && toast("Numbers saved."));
+  };
+  $$('input[name="theme"]').forEach(r => r.onchange = () => { LS.set("theme", r.value); applyTheme(); });
+}
+function applyTheme(){ const t = LS.get("theme","auto"); if (t==="auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", t); }
+
+/* =====================================================================
+   Entry dialog
+   ===================================================================== */
+function field(name, label, type="text", value="", extra=""){ return `<label class="f">${esc(label)}<input name="${name}" type="${type}" value="${esc(value)}" ${extra}></label>`; }
+function select(name, label, options, value){ return `<label class="f">${esc(label)}<select name="${name}">${options.map(([v,l]) => `<option value="${esc(v)}" ${String(v)===String(value)?"selected":""}>${esc(l)}</option>`).join("")}</select></label>`; }
+function nextEvalId(){ const ids = Object.keys(model?.acc||{}).filter(k=>/^E\d+$/.test(k)).map(k=>parseInt(k.slice(1),10)); return "E" + pad((ids.length?Math.max(...ids):0)+1); }
+
+function openEntry(preset={}){
+  if (!store.data){ toast("Connect your data repo or load demo data first."); return; }
+  const sel = $("#entryType");
+  sel.innerHTML = TYPES.filter(([k]) => k!=="init").map(([k,l]) => `<option value="${k}">${esc(l)}</option>`).join("");
+  sel.value = preset.type || "trade";
+  buildFields(preset);
+  sel.onchange = () => buildFields({ type: sel.value });
+  $("#entry").showModal();
+  const first = $("#entryFields input, #entryFields select"); if (first) first.focus();
+}
+function buildFields(preset){
+  const m = model, cfg = m.cfg, type = $("#entryType").value, box = $("#entryFields"), calc = $("#entryCalc");
+  calc.hidden = true; calc.textContent = "";
+  const p = plan(m);
+  const when = field("ts", "When", "datetime-local", preset.ts || nowLocal());
+  let html = "";
+  if (type === "trade"){
+    const rank = a => a.kind==="eval" ? (a.state==="D2" ? 0 : 2) : (a.state==="FU" ? 1 : 3);
+    const active = Object.values(m.acc).filter(a => (a.kind==="eval" && (a.state==="D1"||a.state==="D2")) || (a.kind==="fu" && (a.state==="FU"||a.state==="LOCKED"))).sort((a,b) => rank(a)-rank(b) || (a.id<b.id?-1:1));
+    const acct = preset.acct || active[0]?.id || "";
+    const stepFor = id => { const a = m.acc[id]; if (!a) return "D1"; return a.kind==="eval" ? a.state : (a.state==="FU" ? "FU" : "CYCLE"); };
+    const step = preset.step || stepFor(acct);
+    html = select("acct","Account", active.map(a => [a.id, `${a.id} (${a.kind==="eval"?a.state.replace("D","Day "):a.state==="FU"?"FU shot":"locked"})`]), acct)
+      + select("step","Step", [["D1","Day 1"],["D2","Day 2"],["FU","FU shot"],["CYCLE","Payout cycle"]], step)
+      + select("dir","Prop direction", [["long","Long"],["short","Short"]], preset.dir || "long")
+      + `<div style="grid-column:1/-1"><div class="hint" style="margin-bottom:6px">Result</div><div class="seg">${[["win","Hit the target"],["dead","Hit the stop"],["unfinished","Closed at the cutoff"]].map(([v,l],i)=>`<label><input type="radio" name="result" value="${v}" ${i===0?"checked":""}><span>${l}</span></label>`).join("")}</div></div>`
+      + field("propPnl","Prop P&L ($)","number","", 'step="any"')
+      + field("liveMnq","Live MNQ","number","", 'step="1" min="0"')
+      + field("livePnl","Live P&L incl. commission ($)","number","", 'step="any"')
+      + field("slip","Live slippage (pts, optional)","number","", 'step="0.25"')
+      + `<label class="check" data-only="D2"><input type="checkbox" name="preOpen" checked> Finished before the NY open</label>`
+      + `<label class="check"><input type="checkbox" name="inSession" checked> Finished within the session</label>`
+      + field("note","Note (optional)") + when;
+    box.innerHTML = html;
+    const f = $("#entryForm");
+    const touched = new Set();
+    ["propPnl","liveMnq","livePnl"].forEach(n => f.elements[n].addEventListener("input", () => touched.add(n)));
+    const refresh = (resetAll=false) => {
+      if (resetAll) touched.clear();
+      const st = f.elements.step.value, S = steps(cfg)[st];
+      const res = f.querySelector('input[name="result"]:checked').value;
+      if (!touched.has("propPnl")) f.elements.propPnl.value = defaultProp(st, res, cfg);
+      if (!touched.has("liveMnq")) f.elements.liveMnq.value = S.live;
+      if (!touched.has("livePnl")) f.elements.livePnl.value = defaultLive(st, num(f.elements.propPnl.value), num(f.elements.liveMnq.value), cfg);
+      $$('[data-only="D2"]', box).forEach(el => el.hidden = st !== "D2");
+      calc.hidden = false;
+      calc.textContent = `${S.label}: ${S.prop}. Live ${S.hedge}. Live P&L is filled in from the prop P&L and the hedge size; change it if your fills differ.`;
+    };
+    f.elements.acct.onchange = () => { f.elements.step.value = stepFor(f.elements.acct.value); refresh(true); };
+    f.elements.step.onchange = () => refresh(true);
+    $$('input[name="result"]', box).forEach(r => r.onchange = () => { touched.delete("propPnl"); touched.delete("livePnl"); refresh(); });
+    f.elements.propPnl.addEventListener("input", () => { if (!touched.has("livePnl")) f.elements.livePnl.value = defaultLive(f.elements.step.value, num(f.elements.propPnl.value), num(f.elements.liveMnq.value), cfg); });
+    f.elements.liveMnq.addEventListener("input", () => { if (!touched.has("livePnl")) f.elements.livePnl.value = defaultLive(f.elements.step.value, num(f.elements.propPnl.value), num(f.elements.liveMnq.value), cfg); });
+    if (!active.length){ box.innerHTML = `<p class="hint" style="grid-column:1/-1">No account is waiting for a trade. Log a bought evaluation first.</p>` + when; }
+    else refresh(true);
+    return;
+  }
+  if (type === "buy") html = field("acct","Account ID","text", nextEvalId()) + field("fee","Fee ($)","number", cfg.fee, 'step="any"');
+  if (type === "funded"){
+    const passed = Object.values(m.acc).filter(a => a.kind==="eval" && a.state==="PASSED");
+    const acct = preset.acct || passed[0]?.id || "";
+    html = passed.length ? select("acct","Passed evaluation", passed.map(a=>[a.id,a.id]), acct) + field("fu","Funded account ID","text", acct ? "FU-"+acct.replace(/^E/,"") : "")
+                         : `<p class="hint" style="grid-column:1/-1">No evaluation has passed day 2 yet.</p>`;
+  }
+  if (type === "payout"){
+    const locked = Object.values(m.acc).filter(a => a.kind==="fu" && a.state==="LOCKED");
+    const fu = preset.fu || locked[0]?.id || "";
+    const a = m.acc[fu];
+    const gross = preset.gross ?? (a ? Math.max(0, Math.min(6000, Math.floor(a.bal - cfg.buffer))) : 0);
+    html = locked.length ? select("fu","Funded account", locked.map(a=>[a.id, `${a.id} (${usd(a.bal)} up)`]), fu) + field("gross","Gross payout ($)","number", gross, 'step="any"')
+                         : `<p class="hint" style="grid-column:1/-1">No locked funded account.</p>`;
+    calc.hidden = !locked.length; calc.textContent = `You receive ${Math.round(cfg.split*100)}%. It is counted as on its way until you log that it landed.`;
+  }
+  if (type === "landed"){
+    const open = m.transit;
+    html = open.length ? select("ref","Which transfer", open.map(t=>[t.id, `${t.kind==="payout"?"Payout from "+t.fu:t.kind==="wire"?"Wire to bank":"Deposit to L"}: ${usd(t.amount)} (sent ${dateOf(t.ts)})`]), preset.ref || open[0].id) + field("amount","Amount that landed ($, blank if as expected)","number","", 'step="any"')
+                       : `<p class="hint" style="grid-column:1/-1">Nothing is on its way.</p>`;
+  }
+  if (type === "denied"){
+    const open = m.transit.filter(t=>t.kind==="payout");
+    html = open.length ? select("ref","Which payout", open.map(t=>[t.id, `${t.fu}: ${usd(t.amount)} (requested ${dateOf(t.ts)})`]), open[0].id) : `<p class="hint" style="grid-column:1/-1">No payout is waiting.</p>`;
+    calc.hidden = !open.length; calc.textContent = "A denied payout is a stop rule: stop buying evaluations and review before going on.";
+  }
+  if (type === "deposit") html = field("amount","Amount to L ($)","number", preset.amount ?? "", 'step="any"');
+  if (type === "wire") html = field("amount","Amount from L ($)","number", preset.amount ?? "", 'step="any"') + field("fee","Wire fee ($)","number", cfg.wireFee, 'step="any"');
+  if (type === "investor"){
+    const inv = investorsOwed(cfg);
+    html = select("who","Investor", inv.map(i=>[i.name, `${i.name} (${usd(m.paidInv[i.name]||0)} of ${usd(i.owed)} paid)`]), preset.who || inv[0]?.name) + field("amount","Amount ($)","number", preset.amount ?? "", 'step="any"');
+  }
+  if (type === "self") html = field("amount","Amount ($)","number", preset.amount ?? 1000, 'step="any"');
+  if (type === "reconcile"){
+    html = field("L","Actual L balance ($)","number", Math.round(m.L), 'step="any"') + field("bank","Actual bank balance ($)","number", Math.round(m.bank), 'step="any"');
+    calc.hidden = false; calc.textContent = "Use this when the real balances differ from what the page shows. The difference is kept in the log.";
+  }
+  if (type === "note") html = `<label class="f" style="grid-column:1/-1">Note<textarea name="text"></textarea></label>`;
+  if (type !== "note") html += field("note","Note (optional)");
+  box.innerHTML = html + when;
+}
+function readEntry(){
+  const f = $("#entryForm"), fd = new FormData(f), type = $("#entryType").value;
+  const e = { id:uid(), type, ts: fd.get("ts") || nowLocal() };
+  const g = k => fd.get(k);
+  const n = k => (g(k) === null || g(k) === "") ? undefined : num(g(k));
+  if (g("note")) e.note = String(g("note"));
+  switch(type){
+    case "trade":
+      if (!g("acct")) return null;
+      Object.assign(e, { acct:g("acct"), step:g("step"), dir:g("dir"), result:g("result"), propPnl:n("propPnl")??0, liveMnq:n("liveMnq")??0, livePnl:n("livePnl")??0,
+        slip: g("slip")===""||g("slip")===null ? "" : num(g("slip")), inSession: !!g("inSession") });
+      if (e.step === "D2") e.preOpen = !!g("preOpen");
+      break;
+    case "buy": if (!g("acct")) return null; Object.assign(e, { acct:String(g("acct")).trim(), fee:n("fee") }); break;
+    case "funded": if (!g("acct") || !g("fu")) return null; Object.assign(e, { acct:g("acct"), fu:String(g("fu")).trim() }); break;
+    case "payout": if (!g("fu")) return null; Object.assign(e, { fu:g("fu"), gross:n("gross")??0 }); break;
+    case "landed": if (!g("ref")) return null; e.ref = g("ref"); if (n("amount") !== undefined) e.amount = n("amount"); break;
+    case "denied": if (!g("ref")) return null; e.ref = g("ref"); break;
+    case "deposit": case "self": if (!n("amount")) return null; e.amount = n("amount"); break;
+    case "wire": if (!n("amount")) return null; Object.assign(e, { amount:n("amount"), fee:n("fee") }); break;
+    case "investor": if (!n("amount")) return null; Object.assign(e, { who:g("who"), amount:n("amount") }); break;
+    case "reconcile": Object.assign(e, { L:n("L")??0, bank:n("bank")??0 }); break;
+    case "note": e.text = String(g("text")||""); if (!e.text) return null; break;
+  }
+  return e;
+}
+$("#entryForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const e = readEntry();
+  if (!e){ toast("Fill in the required fields first."); return; }
+  const btn = $("#entrySave"); btn.disabled = true;
+  const ok = await commit(d => { d.events.push(e); }, `${TYPE_LABEL[e.type]}${e.acct?" "+e.acct:""}${e.fu?" "+e.fu:""}`);
+  btn.disabled = false;
+  if (ok){ $("#entry").close(); toast(`${TYPE_LABEL[e.type]} saved.`); }
+});
+$$("[data-close]").forEach(b => b.onclick = () => $("#entry").close());
+$("#chartClose").onclick = () => $("#chartDlg").close();
+$$('input[name="crange"]').forEach(r => r.onchange = drawBalance);
+
+async function undoLast(){
+  const evs = [...store.data.events].sort((a,b)=> a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0);
+  const last = evs[evs.length-1]; if (!last || last.type==="init") return;
+  if (!confirm(`Remove the last entry: ${TYPE_LABEL[last.type]} ${last.acct||last.fu||""}, ${niceTs(last.ts)}?`)) return;
+  const ok = await commit(d => { d.events = d.events.filter(x => x.id !== last.id); }, `Undo ${TYPE_LABEL[last.type]}`);
+  if (ok) toast("Last entry removed.");
+}
+
+/* =====================================================================
+   Demo data: about four weeks of chains run by the playbook rules
+   ===================================================================== */
+function makeDemo(){
+  let seed = 20261006; const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const cfg = { ...DEFAULTS }, S = steps(cfg);
+  const events = []; const z = n => String(n).padStart(2,"0");
+  const days = []; const d0 = new Date(); d0.setDate(d0.getDate() - 44);
+  for (let d = new Date(d0); d <= new Date(); d.setDate(d.getDate()+1)) if (d.getDay() !== 0 && d.getDay() !== 6) days.push(`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`);
+  let L = cfg.startL, bank = cfg.startBank, n = 0, paid = 0;
+  const ev = (day, hm, o) => { const e = { id:uid()+events.length, ts:`${day}T${hm}`, ...o }; events.push(e); return e; };
+  ev(days[0], "08:00", { type:"init", L, bank });
+  const evals = [], fus = [], transit = [];
+  const trade = (day, hm, a, step, win) => {
+    const res = win ? "win" : "dead", prop = defaultProp(step, res, cfg), mnq = S[step].live, live = defaultLive(step, prop, mnq, cfg);
+    L += live;
+    const o = { type:"trade", acct:a.id, step, dir: rnd()<.5?"long":"short", result:res, propPnl:prop, liveMnq:mnq, livePnl:live, slip: mnq ? Math.round(rnd()*3)/4 : "", inSession:true };
+    if (step === "D2") o.preOpen = a.pre;
+    ev(day, hm, o);
+  };
+  days.forEach((day, di) => {
+    const last = di === days.length - 1;
+    let t = 8;
+    const hm = () => { t += 0.4 + rnd()*0.5; return `${z(Math.min(21,Math.floor(t)))}:${z(Math.floor((t%1)*60))}`; };
+    for (const tr of [...transit]) if (tr.due <= di){ ev(day, "08:10", { type:"landed", ref:tr.id }); if (tr.to==="L") L += tr.amount; else bank += tr.amount;
+      if (tr.kind==="payout" && L < cfg.lTarget && bank - cfg.fee >= cfg.lTarget - L){ const amt = Math.round(cfg.lTarget - L); bank -= amt; const e = ev(day,"08:20",{ type:"deposit", amount:amt }); transit.push({ id:e.id, to:"L", amount:amt, due:di, kind:"deposit" }); }
+      transit.splice(transit.indexOf(tr),1); }
+    for (const tr of [...transit]) if (tr.due <= di && tr.kind==="deposit"){ ev(day,"08:40",{ type:"landed", ref:tr.id }); L += tr.amount; transit.splice(transit.indexOf(tr),1); }
+    if (bank < cfg.wireTrigger && L - cfg.lTarget >= cfg.minWire && !transit.some(x=>x.kind==="wire")){ const amt = Math.floor(L - cfg.lTarget); L -= amt; const e = ev(day,"09:00",{ type:"wire", amount:amt, fee:cfg.wireFee }); transit.push({ id:e.id, to:"bank", amount:amt-cfg.wireFee, due:di+1+Math.floor(rnd()*2), kind:"wire" }); }
+    if (paid < cfg.owed && bank > cfg.bankTarget + cfg.cushion + 50 && L >= cfg.lTarget){ const amt = Math.min(Math.floor(bank - cfg.bankTarget - cfg.cushion), cfg.owed - paid); bank -= amt; paid += amt;
+      ev(day,"09:10",{ type:"investor", who:"Investor A", amount:Math.round(amt/2) }); ev(day,"09:11",{ type:"investor", who:"Investor B", amount:amt - Math.round(amt/2) }); }
+    t = 9.5;
+    for (const a of evals.filter(a => a.state==="D2" && a.d1 < di)){
+      if (last && rnd() < .5) continue;
+      a.pre = rnd() < .75; trade(day, hm(), a, "D2", rnd() < 0.609);
+      const lastT = events[events.length-1];
+      if (lastT.result === "win"){ a.state = "PASSED"; if (!last || rnd()<.5){ const fu = { id:"FU-"+a.id.slice(1), state:"FU", ready: a.pre ? di : di+1, bal:0 }; ev(day, hm(), { type:"funded", acct:a.id, fu:fu.id }); a.state="FUNDED"; fus.push(fu); } }
+      else a.state = "DEAD";
+    }
+    t = 15.6; let shots = 0;
+    for (const fu of fus.filter(f => f.state==="FU" && f.ready <= di)){
+      if (shots >= cfg.fuPerDay || L < cfg.fuNeed || (last && rnd()<.5)) continue;
+      shots++; const win = rnd() < 0.274; trade(day, hm(), fu, "FU", win);
+      if (win){ fu.state = "LOCKED"; fu.bal = 2600; fu.lockDay = di; const e = ev(day, hm(), { type:"payout", fu:fu.id, gross:1500 }); fu.bal -= 1500; transit.push({ id:e.id, to:"bank", amount:1350, due:di+1+Math.floor(rnd()*2), kind:"payout" }); }
+      else fu.state = "DEAD";
+    }
+    let bought = 0;
+    while (bought < cfg.dailyNew && !(last && bought >= 1)){
+      const open = evals.filter(a => a.state==="D1"||a.state==="D2").length;
+      const waiting = fus.filter(f=>f.state==="FU").length + evals.filter(a=>a.state==="PASSED").length;
+      const need = cfg.fuNeed + cfg.evalNeed*(open+1) + (waiting>=2?cfg.fuNeed:0);
+      if (bank < cfg.fee || L < need) break;
+      n++; const a = { id:"E"+pad(n), state:"D1" }; bank -= cfg.fee; ev(day, hm(), { type:"buy", acct:a.id, fee:cfg.fee }); evals.push(a); bought++;
+      if (last && rnd() < .5) break;
+      const win = rnd() < 0.609; trade(day, hm(), a, "D1", win);
+      if (win){ a.state = "D2"; a.d1 = di; } else a.state = "DEAD";
+    }
+    for (const fu of fus.filter(f => f.state==="LOCKED" && f.lockDay < di)){
+      if (last && rnd()<.6) continue;
+      const win = rnd() < .5; const prop = win ? 1100 : -1080;
+      ev(day, hm(), { type:"trade", acct:fu.id, step:"CYCLE", dir: rnd()<.5?"long":"short", result: win?"win":"dead", propPnl:prop, liveMnq:0, livePnl:0, slip:"", inSession:true });
+      if (win){ const e = ev(day, hm(), { type:"payout", fu:fu.id, gross:1100 }); transit.push({ id:e.id, to:"bank", amount:990, due:di+1+Math.floor(rnd()*2), kind:"payout" }); }
+      else fu.state = "ENDED";
+    }
+  });
+  return { version:1, config:cfg, events };
+}
+
+/* =====================================================================
+   Wiring
+   ===================================================================== */
+function showTab(name){
+  $$(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  for (const s of ["today","stats","log","settings"]) $("#tab-"+s).hidden = s !== name;
+  LS.set("tab", name);
+}
+$$(".tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+$("#addBtn").onclick = () => openEntry();
+document.addEventListener("click", ev => {
+  const act = ev.target.closest("[data-act]"); if (act){ openEntry(JSON.parse(act.dataset.act)); return; }
+  const ch = ev.target.closest("[data-chart]"); if (ch){ openBalance(ch.dataset.chart); return; }
+  const car = ev.target.closest("[data-car]");
+  if (car){
+    const a = model.acc[car.dataset.car]; if (!a) return;
+    if (a.kind==="eval" && a.state==="PASSED") openEntry({ type:"funded", acct:a.id });
+    else if (a.kind==="fu" && a.state==="LOCKED" && a.bal - model.cfg.buffer >= 1000 && !model.transit.some(t=>t.kind==="payout" && t.fu===a.id)) openEntry({ type:"payout", fu:a.id });
+    else openEntry({ type:"trade", acct:a.id });
+    return;
+  }
+  if (ev.target.closest("[data-demo]")){ store.data = makeDemo(); store.mode = "demo"; LS.set("demo", JSON.stringify(store.data)); LS.set("mode","demo"); setSync("Demo data, nothing is saved to GitHub", "busy"); render(); showTab("today"); toast("Demo data loaded."); return; }
+  const go = ev.target.closest("[data-goto]"); if (go) showTab(go.dataset.goto);
+});
+
+applyTheme();
+showTab(LS.get("tab","today"));
+(function start(){
+  const mode = LS.get("mode");
+  if (mode === "demo"){
+    try{ store.data = JSON.parse(LS.get("demo")); store.mode = "demo"; setSync("Demo data, nothing is saved to GitHub", "busy"); render(); return; }catch{}
+  }
+  if (store.conn().token) connect(); else render();
+})();
+</script>
+</body>
+</html>
